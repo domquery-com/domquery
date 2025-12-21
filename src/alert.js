@@ -1,0 +1,3516 @@
+(function(g) {
+    const v = {
+        options: {},
+        observers: {},
+        rootElement: {
+            checked: !1,
+            element: null
+        },
+        closingAlerts: new Set,
+        callbackExecuting: !1
+    };
+    g.domQuery8Alert || (g.domQuery8Alert = {});
+    g.domQuery8Alert._internal = v;
+    const L = {
+            setTimeoutRAF: function(b, a) {
+                if (0 >= a) return requestAnimationFrame(b), null;
+                const p = performance.now();
+                let h;
+                const r = F => {
+                    F - p >= a ? b() : h = requestAnimationFrame(r)
+                };
+                return h = requestAnimationFrame(r)
+            },
+            clearTimeoutRAF: function(b) {
+                b && cancelAnimationFrame(b)
+            },
+            nextFrame: function(b) {
+                return requestAnimationFrame(b)
+            },
+            afterFrames: function(b, a = 1) {
+                if (0 >= a) requestAnimationFrame(b);
+                else {
+                    var p = 0,
+                        h = () => {
+                            p++;
+                            p >= a ? b() : requestAnimationFrame(h)
+                        };
+                    requestAnimationFrame(h)
+                }
+            }
+        },
+        x = {
+            elementCache: new WeakMap,
+            allElementsCache: new WeakMap,
+            getElement: function(b, a) {
+                if (!b || !a) return null;
+                this.elementCache.has(b) || this.elementCache.set(b, {});
+                const p = this.elementCache.get(b);
+                a in p || (p[a] = b.querySelector(a));
+                return p[a]
+            },
+            getAllElements: function(b, a) {
+                if (!b || !a) return [];
+                this.allElementsCache.has(b) || this.allElementsCache.set(b, {});
+                const p =
+                    this.allElementsCache.get(b);
+                a in p || (p[a] = Array.from(b.querySelectorAll(a)));
+                return p[a]
+            },
+            documentCache: {},
+            getDocumentElement: function(b) {
+                if (!b) return null;
+                b in this.documentCache || (this.documentCache[b] = document.querySelector(b));
+                return this.documentCache[b]
+            },
+            getAllDocumentElements: function(b) {
+                if (!b) return [];
+                const a = "all:" + b;
+                a in this.documentCache || (this.documentCache[a] = Array.from(document.querySelectorAll(b)));
+                return this.documentCache[a]
+            },
+            invalidate: function(b, a) {
+                b && this.elementCache.has(b) &&
+                    delete this.elementCache.get(b)[a];
+                b && this.allElementsCache.has(b) && delete this.allElementsCache.get(b)[a]
+            },
+            invalidateDocument: function(b) {
+                delete this.documentCache[b];
+                delete this.documentCache["all:" + b]
+            },
+            clearParentCache: function(b) {
+                b && (this.elementCache.delete(b), this.allElementsCache.delete(b))
+            },
+            clearDocumentCache: function() {
+                this.documentCache = {}
+            }
+        };
+    $.AlertScrollManager = {
+        positions: {},
+        isUserScrolling: {},
+        lastScrollTime: {},
+        scrollStates: {},
+        savePosition: function(b, a) {
+            !b && a && (b = a.getAttribute("data-instance-id"));
+            if (b && a) {
+                a = [x.getElement(a, ".alert-scroll-wrapper"), x.getElement(a, ".domquery-alert-body"), a.querySelector('div[style*="overflow: auto"]'), a.querySelector('div[style*="overflow-y: auto"]'), a.querySelector('div[style*="overflow-y: scroll"]'), a].filter(p => null !== p);
+                for (const p of a)
+                    if (p.scrollHeight > p.clientHeight) {
+                        this.positions[b] = {
+                            element: p,
+                            position: p.scrollTop
+                        };
+                        break
+                    }
+            }
+        },
+        scrollTo: function(b, a, p) {
+            if (!b) return !1;
+            b.scrollTo({
+                top: a,
+                behavior: "smooth"
+            });
+            return !0
+        },
+        restorePosition: function(b, a, p = 300) {
+            !b &&
+                a && (b = a.getAttribute("data-instance-id"));
+            if (!b || !a || !this.positions[b]) return !1;
+            const h = this.positions[b],
+                r = [x.getElement(a, ".alert-scroll-wrapper"), x.getElement(a, ".domquery-alert-body"), a.querySelector('div[style*="overflow: auto"]'), a.querySelector('div[style*="overflow-y: auto"]'), a.querySelector('div[style*="overflow-y: scroll"]'), a].filter(y => null !== y);
+            let F = 0;
+            const M = () => {
+                for (const y of r)
+                    if (y.scrollHeight > y.clientHeight) return 0 < p ? this.scrollTo(y, h.position, p) : y.scrollTop = h.position, !0;
+                F++;
+                5 > F && setTimeout(M, 200);
+                return !1
+            };
+            return M()
+        },
+        clearPosition: function(b) {
+            return b && this.positions[b] ? (delete this.positions[b], !0) : !1
+        },
+        clearAll: function() {
+            this.positions = {};
+            return !0
+        },
+        scrollToBottom: function(b, a, p = !1) {
+            !b && a && (b = a.getAttribute("data-instance-id"));
+            if (!b || !a) return !1;
+            if (!p && !0 === this.isUserScrolling[b]) {
+                const h = Date.now();
+                if (this.lastScrollTime[b] && 3E3 > h - this.lastScrollTime[b]) return !1
+            }
+            if (!p && this.scrollStates[b] && this.scrollStates[b].thresholdExceeded) return !1;
+            b = [x.getElement(a, ".alert-scroll-wrapper"),
+                x.getElement(a, ".domquery-alert-body"), a.querySelector('div[style*="overflow: auto"]'), a.querySelector('div[style*="overflow-y: auto"]'), a.querySelector('div[style*="overflow-y: scroll"]'), a
+            ].filter(h => null !== h);
+            for (const h of b)
+                if (h.scrollHeight > h.clientHeight) return h.scrollTop = h.scrollHeight, !0;
+            return !1
+        },
+        startUserScrolling: function(b) {
+            this.isUserScrolling[b] = !0;
+            this.lastScrollTime[b] = Date.now()
+        },
+        endUserScrolling: function(b, a = 1E3) {
+            L.setTimeoutRAF(() => {
+                this.isUserScrolling[b] = !1
+            }, a)
+        },
+        checkScrollThreshold: function(b,
+            a, p) {
+            if (b && a) {
+                a = [x.getElement(a, ".alert-scroll-wrapper"), x.getElement(a, ".domquery-alert-body"), a.querySelector('div[style*="overflow: auto"]'), a.querySelector('div[style*="overflow-y: auto"]'), a.querySelector('div[style*="overflow-y: scroll"]'), a].filter(r => null !== r);
+                for (var h of a)
+                    if (h.scrollHeight > h.clientHeight) {
+                        a = h.scrollHeight - h.scrollTop - h.clientHeight;
+                        h = h.scrollHeight - h.clientHeight;
+                        let r = 0;
+                        "number" === typeof p ? r = p : "string" === typeof p && (p.endsWith("px") ? (r = parseInt(p, 10), isNaN(r) && (r = 0)) : p.endsWith("%") ?
+                            (p = parseFloat(p), isNaN(p) || (r = p / 100 * h)) : isNaN(parseFloat(p)) || (r = parseFloat(p)));
+                        this.scrollStates[b] ? this.scrollStates[b].threshold = r : this.scrollStates[b] = {
+                            thresholdExceeded: !1,
+                            threshold: r
+                        };
+                        this.scrollStates[b].thresholdExceeded = a > r ? !0 : !1;
+                        break
+                    }
+            }
+        }
+    };
+    $.scaleArr = function(b, a, p = 300) {
+        if (b && a) {
+            var h = "",
+                r = void 0;
+            void 0 !== a.LC ? (h = "LC", r = a.LC) : void 0 !== a.RC ? (h = "RC", r = a.RC) : void 0 !== a.TC ? (h = "TC", r = a.TC) : void 0 !== a.BC ? (h = "BC", r = a.BC) : void 0 !== a.TL ? (h = "TL", r = a.TL) : void 0 !== a.TR ? (h = "TR", r = a.TR) : void 0 !== a.BL ?
+                (h = "BL", r = a.BL) : void 0 !== a.BR && (h = "BR", r = a.BR);
+            b.style.position = "fixed";
+            b.style.willChange = "transform, opacity";
+            var F = "",
+                M = "",
+                y = !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+                    isMobile: !1
+                }).isMobile,
+                K = () => {
+                    if (y && g.visualViewport) {
+                        b.style.opacity = String("number" === typeof a.opacity ? a.opacity : 1);
+                        b.style.transition = "opacity 0.3s";
+                        L.setTimeoutRAF(() => {
+                            b.style.opacity = "1"
+                        }, 1E3);
+                        if (!0 === a.resize) {
+                            const G = b.querySelectorAll('input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]), textarea, select, [contenteditable="true"]');
+                            let aa = g.visualViewport.height,
+                                ia = !1,
+                                ka = null,
+                                ha = null;
+                            var A = {
+                                    height: b.style.height,
+                                    maxHeight: b.style.maxHeight,
+                                    minHeight: b.style.minHeight,
+                                    overflow: b.style.overflow
+                                },
+                                T = null;
+                            const Y = x.getElement(b, ".domquery-alert-body");
+                            Y && (T = {
+                                maxHeight: Y.style.maxHeight,
+                                minHeight: Y.style.minHeight,
+                                height: Y.style.height,
+                                overflowY: Y.style.overflowY,
+                                webkitOverflowScrolling: Y.style.webkitOverflowScrolling
+                            });
+                            const Ea = () => {
+                                var c = b.getBoundingClientRect();
+                                b.style.height = `${c.height}px`;
+                                b.style.maxHeight = `${c.height}px`;
+                                b.style.minHeight = `${c.height}px`;
+                                Y && (c = Y.getBoundingClientRect(), Y.style.height = `${c.height}px`, Y.style.minHeight = `${c.height}px`)
+                            };
+                            L.setTimeoutRAF(Ea, 200);
+                            const ra = () => {
+                                    ha && (clearTimeout(ha), ha = null);
+                                    Object.keys(A).forEach(c => {
+                                        b.style[c] = A[c]
+                                    });
+                                    Y && T && Object.keys(T).forEach(c => {
+                                        Y.style[c] = T[c]
+                                    });
+                                    L.setTimeoutRAF(Ea, 100);
+                                    ia = !1
+                                },
+                                Ba = () => {
+                                    var c = document.getElementById("keyboard-virtual-layer");
+                                    c && c.remove();
+                                    c = document.createElement("div");
+                                    c.id = "keyboard-virtual-layer";
+                                    c.style.cssText = `\n                           position: fixed;\n                           top: 0;\n                           left: 0;\n                           width: 100%;\n                           height: 100%;\n                           background-color: transparent;\n                           z-index: ${parseInt(b.style.zIndex||
+9999)+2};\n                           pointer-events: none;\n                       `;
+                                    const f = a.parent ? "string" === typeof a.parent ? document.querySelector(a.parent) : a.parent : document.body;
+                                    f ? f.appendChild(c) : document.body.appendChild(c);
+                                    return c
+                                },
+                                ya = () => {
+                                    try {
+                                        var c = document.getElementById("keyboard-transition-layer");
+                                        if (c) try {
+                                            c.remove()
+                                        } catch (l) {
+                                            c.parentNode && c.parentNode.removeChild(c)
+                                        }
+                                        c = "#ffffff";
+                                        var f = document.body;
+                                        let e = 10001;
+                                        try {
+                                            b && 1 === b.nodeType && (c = window.getComputedStyle(b).backgroundColor || "#ffffff")
+                                        } catch (l) {}
+                                        try {
+                                            if (a &&
+                                                a.parent)
+                                                if ("string" === typeof a.parent) {
+                                                    const l = document.querySelector(a.parent);
+                                                    l && (f = l)
+                                                } else a.parent instanceof Element && (f = a.parent)
+                                        } catch (l) {}
+                                        try {
+                                            if (b && b.style) {
+                                                const l = b.style.zIndex;
+                                                l && (e = parseInt(l) + 2)
+                                            }
+                                        } catch (l) {}
+                                        const d = document.createElement("div");
+                                        d.id = "keyboard-transition-layer";
+                                        d.style.position = "fixed";
+                                        d.style.top = "0";
+                                        d.style.left = "0";
+                                        d.style.width = "100%";
+                                        d.style.height = "100%";
+                                        d.style.backgroundColor = c;
+                                        d.style.opacity = "1";
+                                        d.style.transition = "opacity 0.3s ease";
+                                        d.style.zIndex = e.toString();
+                                        try {
+                                            f.appendChild(d)
+                                        } catch (l) {
+                                            document.body.appendChild(d)
+                                        }
+                                        return d
+                                    } catch (e) {
+                                        f = document.createElement("div");
+                                        f.style.display = "none";
+                                        try {
+                                            document.body.appendChild(f)
+                                        } catch (d) {}
+                                        return f
+                                    }
+                                },
+                                Aa = () => {
+                                    const c = g.visualViewport.height;
+                                    ha && L.clearTimeoutRAF(ha);
+                                    ha = L.setTimeoutRAF(() => {
+                                        if (c < aa - 50 && !ia) {
+                                            ia = !0;
+                                            za || (za = !0);
+                                            const f = c - Math.max(0, window.outerHeight - window.innerHeight);
+                                            b.style.height = `${f}px`;
+                                            b.style.maxHeight = `${f}px`;
+                                            b.style.minHeight = null;
+                                            if (Y) {
+                                                const e = x.getElement(b, ".domquery-alert-header"),
+                                                    d =
+                                                    x.getElement(b, ".domquery-alert-footer");
+                                                Y.style.maxHeight = `${f-(e?e.offsetHeight:0)-(d?d.offsetHeight:0)-40}px`;
+                                                Y.style.height = "";
+                                                Y.style.minHeight = "";
+                                                Y.style.overflowY = "auto";
+                                                Y.style.webkitOverflowScrolling = "touch";
+                                                Y.scrollTop = 0
+                                            }
+                                        } else c > aa - 100 && ia && ra()
+                                    }, 100)
+                                };
+                            g.visualViewport.addEventListener("resize", Aa);
+                            let xa = !0,
+                                da = null,
+                                za = !1;
+                            G && "function" === typeof G.forEach && G.forEach(c => {
+                                c && c instanceof Element && (c.addEventListener("focus", () => {
+                                    if (xa) {
+                                        ka = Ba();
+                                        try {
+                                            da = ya()
+                                        } catch (f) {
+                                            da = document.createElement("div"),
+                                                da.style.display = "none", document.body.appendChild(da)
+                                        }
+                                        aa = g.visualViewport.height;
+                                        L.setTimeoutRAF(() => {
+                                            ka && (ka.remove(), ka = null);
+                                            L.setTimeoutRAF(() => {
+                                                da && (da.style.opacity = "0", L.setTimeoutRAF(() => {
+                                                    da && (da.style.display = "none")
+                                                }, 300))
+                                            }, 300)
+                                        }, 200);
+                                        xa = !1
+                                    } else da && L.setTimeoutRAF(() => {
+                                        da && (da.style.display = "block", da.style.opacity = "1", L.setTimeoutRAF(() => {
+                                            da && (da.style.opacity = "0", L.setTimeoutRAF(() => {
+                                                da && (da.style.display = "none")
+                                            }, 300))
+                                        }, 300))
+                                    }, 300)
+                                }), c.addEventListener("blur", () => {
+                                    L.setTimeoutRAF(() => {
+                                        const f = document.activeElement;
+                                        let e = !1;
+                                        Array.isArray(G) ? e = G.some(d => d === f) : G && "object" === typeof G && (e = G === f);
+                                        !e && ia && ra()
+                                    }, 100)
+                                }))
+                            });
+                            const Da = setInterval(() => {
+                                    ia && g.visualViewport.height > aa - 100 && ra()
+                                }, 1E3),
+                                la = () => {
+                                    ia && window.innerHeight > aa - 100 && ra()
+                                };
+                            window.addEventListener("resize", la);
+                            const ma = a.onClose;
+                            a.onClose = function() {
+                                g.visualViewport.removeEventListener("resize", Aa);
+                                window.removeEventListener("resize", la);
+                                clearInterval(Da);
+                                ha && clearTimeout(ha);
+                                const c = document.getElementById("keyboard-virtual-layer");
+                                c && c.remove();
+                                da && (da.remove(), da = null);
+                                "function" === typeof ma && ma.apply(this, arguments)
+                            }
+                        }
+                        let q = g.visualViewport.height,
+                            m = null;
+                        const t = () => {
+                            if (100 < Math.abs(g.visualViewport.height - q)) m && clearTimeout(m), m = setTimeout(() => {
+                                const G = g.visualViewport.offsetTop,
+                                    aa = g.visualViewport.height,
+                                    ia = g.innerHeight - aa;
+                                switch (h) {
+                                    case "TC":
+                                        b.style.top = G + "px";
+                                        b.style.bottom = "auto";
+                                        break;
+                                    case "BC":
+                                        b.style.top = "auto";
+                                        b.style.bottom = ia + "px";
+                                        break;
+                                    case "LC":
+                                    case "RC":
+                                        b.style.top = G + aa / 2 + "px";
+                                        break;
+                                    case "TL":
+                                    case "TR":
+                                        b.style.top =
+                                            G + "px";
+                                        break;
+                                    case "BL":
+                                    case "BR":
+                                        b.style.bottom = ia + "px"
+                                }
+                            }, 100), q = g.visualViewport.height;
+                            else {
+                                const G = g.visualViewport.offsetTop,
+                                    aa = g.visualViewport.height,
+                                    ia = g.innerHeight - aa;
+                                switch (h) {
+                                    case "TC":
+                                        b.style.top = G + "px";
+                                        b.style.bottom = "auto";
+                                        break;
+                                    case "BC":
+                                        b.style.top = "auto";
+                                        b.style.bottom = ia + "px";
+                                        break;
+                                    case "LC":
+                                    case "RC":
+                                        b.style.top = G + aa / 2 + "px";
+                                        break;
+                                    case "TL":
+                                    case "TR":
+                                        b.style.top = G + "px";
+                                        break;
+                                    case "BL":
+                                    case "BR":
+                                        b.style.bottom = ia + "px"
+                                }
+                            }
+                        };
+                        g.visualViewport.addEventListener("resize", t, {
+                            passive: !0
+                        });
+                        g.visualViewport.addEventListener("scroll", t, {
+                            passive: !0
+                        });
+                        t();
+                        return () => {
+                            m && clearTimeout(m);
+                            g.visualViewport.removeEventListener("resize", t, {
+                                passive: !0
+                            });
+                            g.visualViewport.removeEventListener("scroll", t, {
+                                passive: !0
+                            })
+                        }
+                    }
+                    return null
+                };
+            "" === h || "center" === h ? (b.style.top = "50%", b.style.left = "50%", b.style.transformOrigin = "center", F = "translate(-50%, -50%) scale(0)", M = "translate(-50%, -50%) scale(1)") : ["LC", "RC"].includes(h) ? (b.style.top = "50%", b.style["LC" === h ? "left" : "right"] = "0", b.style.transformOrigin = `${"LC"===
+h?"left":"right"} center`, !1 === r ? (F = `translate(${"LC"===h?"-100%":"100%"}, -50%)`, M = "translate(0, -50%)") : (F = "translate(0, -50%) scale(0)", M = "translate(0, -50%) scale(1)"), K()) : ["TC", "BC"].includes(h) ? (b.style["TC" === h ? "top" : "bottom"] = "0", b.style.left = "50%", b.style.transformOrigin = `${"TC"===h?"top":"bottom"} center`, !1 === r ? (F = `translate(-50%, ${"TC"===h?"-100%":"100%"})`, M = "translate(-50%, 0)") : (F = "translate(-50%, 0) scale(0)", M = "translate(-50%, 0) scale(1)"), K()) : ["TL", "TR", "BL", "BR"].includes(h) &&
+                (F = h.startsWith("T") ? "top" : "bottom", M = h.endsWith("L") ? "left" : "right", b.style[F] = "0", b.style[M] = "0", b.style.transformOrigin = `${F} ${M}`, !1 === r ? (F = `translate(${"right"===M?"100%":"-100%"}, ${"bottom"===F?"100%":"-100%"})`, M = "translate(0, 0)") : (F = "translate(0, 0) scale(0)", M = "translate(0, 0) scale(1)"), K());
+            b.style.transform = F;
+            b.style.opacity = String("number" === typeof a.opacity ? a.opacity : 1);
+            b.style.willChange = "transform, opacity";
+            b.style.backfaceVisibility = "hidden";
+            var w = null;
+            !0 === a.hide && (w = Array.from(b.querySelectorAll(".domquery-alert-body, .domquery-text-container, .domquery-text-bottom-container, .domquery-alert-close-btn, .alert-scroll-wrapper > div")),
+                w.forEach(A => {
+                    A && (A.style.transition = "opacity 0.3s ease", A.style.opacity = "0")
+                }));
+            var D = performance.now(),
+                C = A => {
+                    A = Math.min((A - D) / p, 1);
+                    const T = a.easing ? this._anieasing(0, 1, A, a.easing) : A;
+                    if (!0 === a.hide && w) {
+                        const m = .8 <= A ? 5 * (A - .8) : 0;
+                        w.forEach(t => {
+                            t && (t.style.opacity = m.toString())
+                        })
+                    }
+                    b.style.transform = (() => {
+                        if (["TL", "TR", "BL", "BR"].includes(h)) {
+                            if (!1 === r) {
+                                var m = h.endsWith("L") ? "left" : "right",
+                                    t = h.startsWith("T") ? "top" : "bottom";
+                                m = "right" === m ? 100 : -100;
+                                t = "bottom" === t ? 100 : -100;
+                                return `translate3d(${m+(0-m)*T}%, ${t+
+(0-t)*T}%, 0)`
+                            }
+                            return `translate3d(0, 0, 0) scale(${T})`
+                        }
+                        if (!1 === r) {
+                            if (["LC", "RC"].includes(h)) return t = "LC" === h ? -100 : 100, `translate3d(${t+(0-t)*T}%, -50%, 0)`;
+                            if (["TC", "BC"].includes(h)) return t = "TC" === h ? -100 : 100, `translate3d(-50%, ${t+(0-t)*T}%, 0)`
+                        }
+                        return ["LC", "RC"].includes(h) ? `translate3d(0, -50%, 0) scale(${T})` : ["TC", "BC"].includes(h) ? `translate3d(-50%, 0, 0) scale(${T})` : ["TL", "TR", "BL", "BR"].includes(h) ? `translate3d(0, 0, 0) scale(${T})` : `translate3d(-50%, -50%, 0) scale(${T})`
+                    })();
+                    const q =
+                        "number" === typeof a.opacity ? a.opacity : 1;
+                    b.style.opacity = String(q + (1 - q) * T);
+                    if (1 > A) Z = requestAnimationFrame(C);
+                    else if (b.style.willChange = "auto", b.style.backfaceVisibility = "", a.onComplete) a.onComplete()
+                };
+            var Z = requestAnimationFrame(C);
+            return {
+                initialTransform: F,
+                finalTransform: M,
+                cancel: () => {
+                    Z && (cancelAnimationFrame(Z), b.style.willChange = "auto", b.style.backfaceVisibility = "")
+                }
+            }
+        }
+    };
+    $.aBox = function(b, a) {
+        function p() {
+            if (M) {
+                F += 2 * r;
+                3 <= Math.abs(F) && (r *= -1);
+                var D = Math.abs(F) / 3;
+                D = 2 * (.5 > D ? 2 * D * D : -1 + (4 - 2 * D) * D);
+                if (a) switch (a) {
+                    case "TL":
+                        D =
+                            `translate(${K-D}px, ${w-D}px)`;
+                        break;
+                    case "TR":
+                        D = `translate(${K+D}px, ${w-D}px)`;
+                        break;
+                    case "BL":
+                        D = `translate(${K-D}px, ${w+D}px)`;
+                        break;
+                    case "BR":
+                        D = `translate(${K+D}px, ${w+D}px)`;
+                        break;
+                    case "TC":
+                        D = `translate(${K}px, ${w-D}px)`;
+                        break;
+                    case "BC":
+                        D = `translate(${K}px, ${w+D}px)`;
+                        break;
+                    case "LC":
+                        D = `translate(${K-D}px, ${w}px)`;
+                        break;
+                    case "RC":
+                        D = `translate(${K+D}px, ${w}px)`;
+                        break;
+                    default:
+                        D = y
+                } else D = `${y} scale(${1+D/100})`;
+                h.css("transform", D); - 10 <= F && 10 >= F ? requestAnimationFrame(p) : (M = !1, h.css("transform",
+                    y))
+            }
+        }
+        const h = $(b);
+        let r = 1,
+            F = 0,
+            M = !0;
+        const y = h.css("transform");
+        b = new DOMMatrix(y);
+        const K = b.m41,
+            w = b.m42;
+        p();
+        L.setTimeoutRAF(() => {
+            M = !1;
+            h.css("transform", y)
+        }, 300)
+    };
+    $._alert0 = function(b, a = {}, p = 300) {
+        var h = a.preserveExisting,
+            r = a.parent;
+        "string" === typeof b && (b = b.replace(/>\s+</g, "><").trim());
+        "object" === typeof b && (a = b, b = "");
+        if (null === b || void 0 === b) b = "";
+        var F = {
+                id: null,
+                swipe: !1,
+                parent: "body",
+                background: "#000000",
+                alpha: 50,
+                retainScroll: !0,
+                autoscroll: !1,
+                noScrollRestore: !1,
+                bgcolor: "#FFFFFF",
+                titleColor: "#000000",
+                color: "#000000",
+                TOPS: "",
+                shadow: "",
+                History: !0,
+                shadowBox: "0 2px 10px rgba(0,0,0,0.3)",
+                vibrate: !0,
+                trigger: "",
+                title: "",
+                Font: "1.1em",
+                font: "0.9em",
+                opacity: 1,
+                padding: 0,
+                margin: "0",
+                border: "none",
+                borderWidth: "",
+                borderStyle: "",
+                borderColor: "",
+                text: "",
+                textBottom: "",
+                width: "250px",
+                minWidth: "",
+                maxWidth: "",
+                height: "auto",
+                minHeight: "",
+                maxHeight: "",
+                radius: "3px",
+                zindex: 9999,
+                toastZindex: 99999,
+                $Ok: "Ok",
+                OkBgcolor: "#E0E0E0",
+                OkColor: "#000000",
+                scroll: !1,
+                scrollX: !1,
+                scrollY: !1,
+                unscroll: !1,
+                close: !1,
+                xclose: !1,
+                loading: !1,
+                TL: void 0,
+                TR: void 0,
+                BL: void 0,
+                BR: void 0,
+                TC: void 0,
+                LC: void 0,
+                RC: void 0,
+                BC: void 0,
+                CC: void 0
+            },
+            M = !1 !== a.$Ok || Object.keys(a).some(m => m.startsWith("$") && "$Ok" !== m);
+        a.padding = a.padding || (M ? "15px" : "15px 15px 0 15px");
+        "_self" === a.parent && (a.preserveExisting = !0);
+        if ("_blank" === a.parent) {
+            let m = 2147483640;
+            Array.from(document.querySelectorAll(".domquery-alert")).forEach(t => {
+                t = parseInt(getComputedStyle(t).zIndex);
+                !isNaN(t) && t > m && (m = t)
+            });
+            a.zindex = a.zindex && a.zindex !== F.zindex ? Math.max(a.zindex, m) + 2 : m + 2;
+            2147483647 < a.zindex &&
+                (a.zindex = 2147483647);
+            a.overlayZindex = a.zindex - 1
+        }
+        h = void 0 !== h ? h : a.preserveExisting;
+        r = void 0 !== r ? r : a.parent;
+        a = Object.assign({}, F, a);
+        void 0 !== h && (a.preserveExisting = h);
+        if ("_self" === r || "_blank" === r) a.parent = r;
+        delete a._originalParent;
+        if ("_self" !== a.parent && "_blank" !== a.parent && (!a.zindex || a.zindex === F.zindex)) {
+            r = Array.from(document.querySelectorAll(".domquery-alert"));
+            let m = F.zindex;
+            r.forEach(t => {
+                t = parseInt(getComputedStyle(t).zIndex);
+                !isNaN(t) && t > m && (m = t)
+            });
+            a.zindex = m + 2;
+            a.overlayZindex = a.zindex - 1
+        }!a.unscroll ||
+            a.scrollY || a.scroll || (a.scrollY = !0, a.hideScrollbar = !0);
+        !0 === a.scrollY && (a.forceScroll = !0, a.scroll = !0);
+        "auto" !== a.height || !a.scrollY && !a.scroll || a.minHeight || (a.minHeight = "200px");
+        r = m => {
+            if (void 0 === m) return "auto";
+            if ("number" === typeof m) return m + "px";
+            if ("string" === typeof m) {
+                if (/px|%|vh|vw|rem|em|ch|ex|cm|mm|in|pt|pc/i.test(m)) return m;
+                const t = parseFloat(m);
+                if (!isNaN(t)) return t + "px"
+            }
+            return m
+        };
+        const y = r(a.width);
+        let K = r(a.height);
+        "_blank" === a.parent && "100%" === K && (K = "100vh");
+        h = "" !== a.title;
+        M = `alert-${Date.now()}-${Math.random().toString(36).substr(2,
+9)}`;
+        a.instanceId = M;
+        if (!a._originalFirstStepOptions) {
+            a._originalFirstStepOptions = {};
+            var w = new Set;
+            for (var D in a) a[D] && "object" === typeof a[D] && !Array.isArray(a[D]) && "_originalFirstStepOptions" !== D && "_hasNext" !== D && "instanceId" !== D && "_stepInputValues" !== D && "_currentStepKey" !== D && void 0 !== a[D].title && w.add(D);
+            for (var C in a) w.has(C) || "_originalFirstStepOptions" === C || "_hasNext" === C || "_stepInputValues" === C || "_currentStepKey" === C || (a._originalFirstStepOptions[C] = a[C])
+        }
+        a._currentStepKey || (a._currentStepKey =
+            "first");
+        a._stepInputValues || (a._stepInputValues = {});
+        v.options[M] = {
+            swipe: a.swipe,
+            parent: a.parent,
+            toast: a.toast,
+            swipeCallback: a.swipeCallback
+        };
+        a.toast || a.preserveExisting || "_blank" === a.parent || "_self" === a.parent || !(D = x.getDocumentElement(".domquery-alert:not(.toast-alert)")) || ((C = D.getAttribute("data-instance-id")) && (C = document.querySelector(`.domquery-shadow-overlay[data-instance-id="${C}"]`)) && C.parentNode && C.parentNode.removeChild(C), D.parentNode && D.parentNode.removeChild(D));
+        C = D = "";
+        let Z = [];
+        w =
+            (m, t) => {
+                if (!m) return "";
+                if ("function" === typeof m) {
+                    try {
+                        var G = m();
+                        if ("string" === typeof G) return `<div class="domquery-text-container">${G}</div>`;
+                        if (G instanceof Element) return `<div class="domquery-text-container">${G.outerHTML}</div>`
+                    } catch (ia) {}
+                    return ""
+                }
+                if ("string" === typeof m) {
+                    G = t.alertId || "alert_" + Date.now();
+                    t.alertId = G;
+                    const ia = document.createElement("div");
+                    ia.id = G;
+                    for (var aa in t) "function" === typeof t[aa] && (ia[aa] = t[aa]);
+                    document.body.appendChild(ia);
+                    m = m.replace(/this\./g, `document.getElementById('${G}').`);
+                    m = m.replace(/onclick="([^"]+)"/g, (ka, ha) => ha.includes("this.") ? ka : `onclick="window.${ha}"`);
+                    t = m.trim();
+                    return !t.startsWith("#") && !t.startsWith(".") || t.includes("bin(") || t.includes("{") || t.includes("}") ? `<div class="domquery-text-container">${m.split(/(\{[^}]+\}|bin\([^)]+\))/).map(ka=>(ka=ka.trim())?ka.startsWith("bin(")?ka.slice(4,-1).split(",").map(ha=>ha.trim()).map(ha=>{const Y=document.querySelector(ha);if(Y){const Ea=g.getComputedStyle(Y).display;"none"===Ea&&(Y.style.display="block");Z.push({selector:ha,
+parent:Y.parentNode,nextSibling:Y.nextSibling,element:Y,originalDisplay:Ea});ha=Y.outerHTML;Y.parentNode.removeChild(Y);return ha}return""}).join("\n"):ka.startsWith("{")&&ka.endsWith("}")&&!ka.includes("{")&&!ka.includes("}")?ka.slice(1,-1).split(";").map(ha=>ha.trim()).map(ha=>{try{return eval(ha)||""}catch(Y){return""}}).join(""):ka:"").join("")}</div>` : (m = document.querySelector(t)) ? (aa = getComputedStyle(m).display, "none" === aa && (m.style.display = "block"), Z.push({
+                        selector: t,
+                        parent: m.parentNode,
+                        nextSibling: m.nextSibling,
+                        element: m,
+                        originalDisplay: aa
+                    }), t = m.outerHTML, m.parentNode.removeChild(m), `<div class="domquery-text-container">${t}</div>`) : ""
+                }
+                return `<div class="domquery-text-container">${String(m)}</div>`
+            };
+        a.text && (D = w(a.text, a));
+        a.textBottom && (C = w(a.textBottom, a));
+        w = a.xclose ? `<div style="position: absolute; right: 10px; top: 10px; cursor: pointer; transition: opacity 0.2s; z-index:1; ${!0===a.hide?"opacity: 0;":""}" class="domquery-close-x-btn">\n\t\t\t\t<svg width="20" height="20" viewBox="0 0 24 24" style="opacity: 0.6; transition: opacity 0.2s; pointer-events: all;"\n\t\t\t\t\t\tonmouseover="this.style.opacity='1'"\n\t\t\t\t\t\tonmouseout="this.style.opacity='0.6'">\n\t\t\t\t\t<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" fill="${a.color}"/>\n\t\t\t\t</svg>\n\t\t\t</div>` :
+            '<div style="display:none" class="domquery-close-x-btn"></div>';
+        const A = ['<div class="domquery-alert-loading" style="display: none;position: absolute;top: 0;left: 0;right: 0;bottom: 0;background: rgba(255,255,255,0.2);', "z-index: " + (a.zindex + 1) + ";", 'justify-content: center;align-items: center;"><div style="width: 40px;height: 40px;border: 3px solid #f3f3f3;', "border-top: 3px solid " + a.OkBgcolor + ";", 'border-radius: 50%;animation: spin 1s linear infinite;"></div></div><style>@keyframes spin {0% { transform: rotate(0deg); }100% { transform: rotate(360deg); }}</style>'].join(""),
+            T = (m => {
+                const t = [];
+                Object.keys(m).forEach(G => {
+                    if (G.startsWith("$") && !G.endsWith("Style") && !G.endsWith("hover")) {
+                        var aa = G.substring(1).replace(/Bgcolor|Color$/, "");
+                        "Ok" === aa || G.endsWith("Color") || G.endsWith("Bgcolor") || t.find(ia => ia.name === aa) || t.push({
+                            name: aa,
+                            text: m[G] || aa,
+                            bgcolor: m[`$${aa}Bgcolor`] || "#007bff",
+                            color: m[`$${aa}Color`] || "#FFFFFF",
+                            customStyle: m[`$${aa}Style`] || "",
+                            hoverStyle: m[`$${aa}hover`] || ""
+                        })
+                    }
+                });
+                return t
+            })(a),
+            q = (() => {
+                let m = '<div style="text-align: right; margin-top: 15px;">';
+                if (!1 !==
+                    a.$Ok) {
+                    const t = a.$Okhover || "opacity: 1;",
+                        G = ["padding: 6px 10px;", "background: " + (a.$OkBgcolor || a.OkBgcolor) + ";", "color: " + (a.$OkColor || a.OkColor) + ";", "border: none;border-radius: 3px;cursor: pointer;opacity: 0.9;font-size:0.9em;transition: all 0.2s;margin-left: 10px;", a.$OkStyle || ""].join("");
+                    m += ['<button class="domquery-alert-close-btn" style="', G, '" onmouseover="this.style.cssText = `' + G + "; " + t + '`"', 'onmouseout="this.style.cssText = `' + G + '`">', a.$Ok, "</button>"].join("")
+                }
+                m += T.map(function(t) {
+                    const G = ["padding: 6px 10px;", `background: ${t.bgcolor};`, `color: ${t.color};`, "border: none;border-radius: 3px;cursor: pointer;opacity: 0.9;font-size:0.9em;transition: all 0.2s;margin-left: 10px;", t.customStyle].join(""),
+                        aa = t.hoverStyle || "opacity: 1;";
+                    return [`<button class="alert-${t.name.toLowerCase()}-btn" style="`, G, '" onmouseover="this.style.cssText = `' + G + "; " + aa + '`"', 'onmouseout="this.style.cssText = `' + G + '`">', t.text, "</button>"].join("")
+                }).join("");
+                return m + "</div>"
+            })();
+        F = ["z-index: " + ("_blank" ===
+                a.parent ? a.zindex : a.toast ? a.toastZindex : a.zindex) + " !important;", "margin: " + (a.margin || "0") + ";", a.border ? "border: " + a.border + ";" : "", a.borderWidth ? "border-width: " + a.borderWidth + ";" : "", a.borderStyle ? "border-style: " + a.borderStyle + ";" : "", a.borderColor ? "border-color: " + a.borderColor + ";" : "", "background: " + a.bgcolor + ";", "width: " + y + ";", a.minWidth ? "min-width: " + r(a.minWidth) + ";" : "", a.maxWidth ? "max-width: " + r(a.maxWidth) + ";" : "", "height: " + K + ";", a.minHeight ? "min-height: " + r(a.minHeight) + ";" : "", a.maxHeight ?
+            "max-height: " + r(a.maxHeight) + ";" : "", "border-radius: " + a.radius + ";", "transparent" === a.bgcolor ? "" : !1 === a.shadowBox ? "" : "box-shadow: " + ("string" === typeof a.shadowBox ? a.shadowBox : F.shadowBox) + ";", "box-sizing: border-box;position: fixed;", "opacity: " + ("number" === typeof a.opacity ? a.opacity : 1) + ";", "z-index: " + a.zindex + ";", "overflow: hidden !important;", a.maxHeight ? "" : "max-height: 100vh !important;", "display: flex !important;flex-direction: column !important;"
+        ].join("");
+        b = ['<div class="domquery-alert ' + (a.toast ?
+                "toast-alert" : "standard-alert") + '" ', `data-instance-id="${M}" `, null !== a.id ? `id="${a.id}" ` : `id="${M}" `, 'style="' + F + '">', w, A, a.scroll || a.scrollX || a.scrollY || a.forceScroll ? '<div class="alert-scroll-wrapper" style="position: relative !important;width: 100% !important;height: 100% !important;max-height: ' + (a.maxHeight || "100%") + " !important;overflow: " + (a.scroll || a.scrollY || a.forceScroll ? "auto" : a.scrollX ? "auto hidden" : a.scrollY || a.forceScroll ? "hidden auto" : "hidden") + " !important;" + (a.hideScrollbar ? "scrollbar-width: none !important; -ms-overflow-style: none !important;" :
+                "") + "-webkit-overflow-scrolling: touch !important;touch-action: " + (a.scroll || a.scrollY || a.forceScroll ? "pan-x pan-y" : a.scrollY || a.forceScroll ? "pan-y" : "pan-x") + ' !important;"><div style="padding: ' + ("0" === a.padding ? "0" : r(a.padding)) + ';">' : '<div style="padding: ' + ("0" === a.padding ? "0" : r(a.padding)) + ';overflow: hidden !important;max-height: 100% !important;height: 100% !important;flex: 1;">', '<div class="domquery-alert-body" style="width: 100% !important;' + (a.toast ? "text-overflow: ellipsis;" : "") + (a.scroll ||
+                a.scrollX || a.scrollY || a.forceScroll ? "" : "overflow: hidden !important;") + (!0 === a.hide ? "opacity: 0;" : "") + '">', ((m, t) => {
+                if (t) return `<div style="font-size:${a.Font}; font-weight:bold; color:${a.titleColor}">${a.title}</div>\n\t\t\t\t\t   <hr style="border:none; height:1px; background-color:rgba(0,0,0,0.1); margin:10px 0">\n\t\t\t\t\t   <div style="font-size:${a.font}; color:${a.color||"#000000"}">${m}</div>`;
+                let G;
+                m.includes("\n") ? G = m.split("\n", 2) : m.includes("<br>") && (G = m.split("<br>", 2));
+                return G ? `<div style="font-size:${a.Font}; font-weight:bold; color:${a.titleColor}">${G[0]}</div>\n\t\t\t\t\t   <hr style="border:none; height:1px; background-color:rgba(0,0,0,0.1); margin:10px 0">\n\t\t\t\t\t   <div style="font-size:${a.font}; color:${a.color||
+"#000000"}">${G[1]}</div>` : `<div style="font-size:${a.Font}; font-weight:bold; color:${a.titleColor}">${m}</div>`
+            })(b, h), "</div>", '<div class="domquery-text-container" style="width: 100% !important;' + (a.scroll || a.scrollX || a.scrollY || a.forceScroll ? "" : "overflow: hidden !important;") + (!0 === a.hide ? "opacity: 0;" : "") + '">', D, "</div>", '<div style="width: 100% !important;' + (a.scroll || a.scrollX || a.scrollY || a.forceScroll ? "" : "overflow: hidden !important;") + (!0 === a.hide ? "opacity: 0;" : "") + '">', q, "</div>", '<div class="domquery-text-bottom-container" style="width: 100% !important;' +
+            (a.scroll || a.scrollX || a.scrollY || a.forceScroll ? "" : "overflow: hidden !important;") + (!0 === a.hide ? "opacity: 0;" : "") + '">', C, "</div></div>", a.scroll || a.scrollX || a.scrollY || a.forceScroll ? "</div></div>" : "</div>", "</div>"
+        ].join("");
+        F = document.createElement("div");
+        F.innerHTML = b;
+        b = F.firstElementChild;
+        b._elementInfos = Z;
+        F = a && "number" === typeof a.openSpeed ? a.openSpeed : p;
+        a._closeSpeed = a && "number" === typeof a.closeSpeed ? a.closeSpeed : p;
+        return {
+            alertBox: b,
+            options: a,
+            speed: F,
+            buttonConfigs: T
+        }
+    };
+    $._alert1 = function(b, a, p,
+        h, r) {
+        function F(c) {
+            b.contains(c.target) || c.preventDefault()
+        }
+
+        function M(c, f, e) {
+            const d = x.getElement(f, ".alert-scroll-wrapper") || x.getElement(f, ".domquery-alert-body");
+            if (d)
+                if (50 < d.scrollHeight) $.AlertScrollManager.restorePosition(c, f, e);
+                else {
+                    const l = new MutationObserver(() => {
+                        50 < d.scrollHeight && ($.AlertScrollManager.restorePosition(c, f, e), l.disconnect())
+                    });
+                    l.observe(d, {
+                        childList: !0,
+                        subtree: !0
+                    })
+                }
+            else {
+                const l = new MutationObserver(() => {
+                    const u = x.getElement(f, ".alert-scroll-wrapper") || x.getElement(f, ".domquery-alert-body");
+                    u && 50 < u.scrollHeight && ($.AlertScrollManager.restorePosition(c, f, e), l.disconnect())
+                });
+                l.observe(f, {
+                    childList: !0,
+                    subtree: !0
+                })
+            }
+        }
+        const y = b.getAttribute("data-instance-id");
+        let K = !0;
+        var w = () => {
+            if (!a.parent) return document.body;
+            if ("_blank" === a.parent) try {
+                var c = "domquery-blank-container-" + y;
+                let f = null,
+                    e = 0;
+                Array.from(document.querySelectorAll(".domquery-alert")).forEach(k => {
+                    if (k.getAttribute("data-instance-id") !== y) {
+                        const n = parseInt(getComputedStyle(k).zIndex);
+                        !isNaN(n) && n > e && (e = n, f = k)
+                    }
+                });
+                const d = a.zindex ||
+                    2147483647,
+                    l = d - 1 - 1;
+                let u = document.getElementById(c);
+                if (u) {
+                    const k = a.zindex || 2147483647;
+                    a.overlayZindex = k - 1;
+                    a.zindex = k;
+                    a.toastZindex = k
+                } else {
+                    u = document.createElement("div");
+                    u.className = "domquery-blank-container";
+                    u.id = c;
+                    u.setAttribute("data-instance-id", y);
+                    u.style.cssText = `\n\t\t\t\t\t\t\tposition: fixed;\n\t\t\t\t\t\t\ttop: 0;\n\t\t\t\t\t\t\tleft: 0;\n\t\t\t\t\t\t\twidth: 100vw;\n\t\t\t\t\t\t\theight: 100vh;\n\t\t\t\t\t\t\tpointer-events: none; /* \uae30\ubcf8\uc801\uc73c\ub85c\ub294 \uc774\ubca4\ud2b8 \ud1b5\uacfc */\n\t\t\t\t\t\t\tz-index: ${l};\n\t\t\t\t\t\t`;
+                    document.body.appendChild(u);
+                    b.setAttribute("data-blank-container-id", c);
+                    b.style.position = "fixed";
+                    b.style.pointerEvents = "auto";
+                    b.style.setProperty("z-index", d.toString(), "important");
+                    b.style.left = "0";
+                    b.style.right = "0";
+                    b.style.margin = "0 auto";
+                    b.classList.add("domquery-independent-alert");
+                    a.overlayZindex = d - 1;
+                    a.zindex = d;
+                    a.toastZindex = d;
+                    b.style.setProperty("z-index", a.zindex.toString(), "important");
+                    f && (a._parentAlert = f);
+                    try {
+                        window !== window.top && window.top.document.body.appendChild(u)
+                    } catch (k) {}
+                }
+                return document.body
+            } catch (f) {
+                return document.body
+            }
+            if ("_self" ===
+                a.parent) {
+                let f = null,
+                    e = 9998;
+                Array.from(document.querySelectorAll(".domquery-alert")).forEach(d => {
+                    if (d.getAttribute("data-instance-id") !== a.instanceId) {
+                        const l = parseInt(getComputedStyle(d).zIndex);
+                        !isNaN(l) && l > e && (e = l, f = d)
+                    }
+                });
+                if (f) {
+                    a._parentAlert = f;
+                    c = parseInt(getComputedStyle(f).zIndex) || 0;
+                    !isNaN(c) && 0 < c ? (a.zindex = c + 2, a.overlayZindex = a.zindex - 1) : a.zindex && 9999 !== a.zindex || (a.zindex = 9999, a.overlayZindex = a.zindex - 1);
+                    if (c = f.getAttribute("data-instance-id")) a._parentInstanceId = c, b.setAttribute("data-parent-instance-id",
+                        c);
+                    else try {
+                        console.warn("[alert.js] _self alert \uc0dd\uc131 - \ubd80\ubaa8 instanceId\ub97c \ucc3e\uc744 \uc218 \uc5c6\uc74c")
+                    } catch (d) {}
+                    return document.body
+                }
+                console.warn("[alert.js] _self alert \uc0dd\uc131 - \ubd80\ubaa8 alert\ub97c \ucc3e\uc744 \uc218 \uc5c6\uc74c");
+                return document.body
+            }
+            c = null;
+            "string" === typeof a.parent ? a.parent.startsWith("#") ? (c = a.parent.substring(1), c = document.getElementById(c)) : c = document.querySelector(a.parent) : c = a.parent;
+            if (!c) return document.body;
+            c === document.body || c.classList.contains("domquery-alert") ||
+                "static" !== getComputedStyle(c).position || (c.style.position = "relative");
+            return c
+        };
+        const D = (c, f) => {
+                const e = c === document.body || c === document.documentElement ? g.pageYOffset : c.scrollTop,
+                    d = (void 0 !== f ? f : c === document.body || c === document.documentElement ? g.pageYOffset : c.scrollTop) - e;
+                let l = null;
+                const u = k => {
+                    l || (l = k);
+                    k = Math.min((k - l) / 600, 1);
+                    const n = 1 - Math.pow(1 - k, 5);
+                    c === document.body || c === document.documentElement ? g.scrollTo(0, e + d * n) : c.scrollTop = e + d * n;
+                    1 > k && g.requestAnimationFrame(u)
+                };
+                g.requestAnimationFrame(u)
+            },
+            C = w(),
+            Z = !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+                isMobile: !1
+            }).isMobile;
+        (function() {
+            if ("_self" === a.parent) {
+                const f = b.querySelector('div[style*="overflow: auto"]');
+                f && (f.addEventListener("wheel", e => {
+                    e.stopPropagation();
+                    f.scrollHeight > f.clientHeight && (e.preventDefault(), f.scrollTop += e.deltaY)
+                }, {
+                    passive: !1
+                }), f.addEventListener("touchmove", e => {
+                    const d = Math.abs(e.touches[0].clientX - (e.touches[0].target.getBoundingClientRect().left + e.touches[0].target.offsetWidth / 2)),
+                        l = Math.abs(e.touches[0].clientY -
+                            (e.touches[0].target.getBoundingClientRect().top + e.touches[0].target.offsetHeight / 2));
+                    d > 1.5 * l || e.stopPropagation()
+                }, {
+                    passive: !0
+                }));
+                var c = x.getElement(b, ".alert-scroll-wrapper");
+                c && (c.addEventListener("wheel", e => {
+                    e.target.closest('div[style*="overflow: auto"]') || e.stopPropagation()
+                }, {
+                    passive: !0
+                }), c.addEventListener("touchmove", e => {
+                    if (!e.target.closest('div[style*="overflow: auto"]')) {
+                        var d = Math.abs(e.touches[0].clientX - (e.touches[0].target.getBoundingClientRect().left + e.touches[0].target.offsetWidth /
+                                2)),
+                            l = Math.abs(e.touches[0].clientY - (e.touches[0].target.getBoundingClientRect().top + e.touches[0].target.offsetHeight / 2));
+                        d > 1.5 * l || e.stopPropagation()
+                    }
+                }, {
+                    passive: !0
+                }))
+            } else if (c = Array.from(document.querySelectorAll(".domquery-alert")), 1 < c.length || "_blank" === a.parent && 0 < c.length) {
+                const f = b.querySelector('div[style*="overflow: auto"]');
+                f && (f.addEventListener("wheel", e => {
+                    e.stopPropagation();
+                    f.scrollHeight > f.clientHeight && (e.preventDefault(), f.scrollTop += e.deltaY)
+                }, {
+                    passive: !1
+                }), f.addEventListener("touchmove",
+                    e => {
+                        const d = Math.abs(e.touches[0].clientX - (e.touches[0].target.getBoundingClientRect().left + e.touches[0].target.offsetWidth / 2)),
+                            l = Math.abs(e.touches[0].clientY - (e.touches[0].target.getBoundingClientRect().top + e.touches[0].target.offsetHeight / 2));
+                        d > 1.5 * l || e.stopPropagation()
+                    }, {
+                        passive: !0
+                    }));
+                b.style.overflow = "auto";
+                b.style.WebkitOverflowScrolling = "touch"
+            } else if (!a.toast || a.toast && !1 !== a.background)
+                if (Z) {
+                    document.body.style.overflow = "hidden";
+                    document.documentElement.style.overflow = "hidden";
+                    b.style.overflow =
+                        "auto";
+                    b.style.WebkitOverflowScrolling = "touch";
+                    document.addEventListener("touchmove", F, {
+                        passive: !1
+                    });
+                    const f = b.querySelector('div[style*="overflow: auto"]');
+                    f && (f.addEventListener("wheel", e => {
+                        e.stopPropagation();
+                        f.scrollHeight > f.clientHeight && (e.preventDefault(), f.scrollTop += e.deltaY)
+                    }, {
+                        passive: !1
+                    }), f.addEventListener("touchmove", e => {
+                        const d = Math.abs(e.touches[0].clientX - (e.touches[0].target.getBoundingClientRect().left + e.touches[0].target.offsetWidth / 2)),
+                            l = Math.abs(e.touches[0].clientY - (e.touches[0].target.getBoundingClientRect().top +
+                                e.touches[0].target.offsetHeight / 2));
+                        d > 1.5 * l || e.stopPropagation()
+                    }, {
+                        passive: !0
+                    }))
+                } else if (c = document.documentElement.scrollWidth > document.documentElement.clientWidth, document.documentElement.scrollHeight > document.documentElement.clientHeight || c) b.wheelListener = f => {
+                const e = f.target.closest('div[style*="overflow: auto"]');
+                e ? (f.stopPropagation(), e.scrollHeight > e.clientHeight && (f.preventDefault(), e.scrollTop += f.deltaY)) : b.contains(f.target) || f.preventDefault()
+            }, document.addEventListener("wheel", b.wheelListener, {
+                passive: !1
+            })
+        })();
+        if (void 0 !== a.autoscroll) {
+            const c = a.id || "default-scroll-position";
+            if ("object" === typeof a.autoscroll && null !== a.autoscroll) {
+                var A = a.autoscroll;
+                const f = "number" === typeof A.duration ? A.duration : 300,
+                    e = "number" === typeof A.offset ? A.offset : 20;
+                let d = null;
+                A.scrollKey ? d = b.querySelector(`[data-scroll-key="${A.scrollKey}"]`) : A.selector && (d = b.querySelector(A.selector));
+                d && setTimeout(() => {
+                    const u = x.getElement(b, ".alert-scroll-wrapper") || x.getElement(b, ".domquery-alert-body");
+                    if (u && d) {
+                        var k;
+                        if ((k =
+                                x.getElement(b, ".alert-scroll-wrapper") || x.getElement(b, ".domquery-alert-body")) && d) {
+                            if ("undefined" !== typeof $ && $.fn && $.fn.offset) {
+                                var n = $(d);
+                                k = $(k);
+                                n = n.offset().top;
+                                k = k.offset().top
+                            } else {
+                                n = d.getBoundingClientRect();
+                                const N = k.getBoundingClientRect();
+                                n = n.top - N.top + k.scrollTop;
+                                k = k.scrollTop
+                            }
+                            k = n - k - e
+                        } else k = null;
+                        null !== k && 0 <= k && $.AlertScrollManager.scrollTo(u, k, f)
+                    }
+                }, (a && "number" === typeof a.openSpeed ? a.openSpeed : 500) + 50);
+                const l = () => {
+                    $.AlertScrollManager.savePosition(c, b)
+                };
+                A = [x.getElement(b, ".alert-scroll-wrapper"),
+                    x.getElement(b, ".domquery-alert-body"), b.querySelector('div[style*="overflow: auto"]'), b.querySelector('div[style*="overflow-y: auto"]'), b.querySelector('div[style*="overflow-y: scroll"]'), b
+                ].filter(u => null !== u);
+                A.forEach(u => {
+                    u.addEventListener("scroll", l, {
+                        passive: !0
+                    })
+                });
+                b.scrollListener = l;
+                b.scrollElements = A
+            } else {
+                const f = "number" === typeof a.autoscroll ? a.autoscroll : 300;
+                window.requestAnimationFrame(() => {
+                    M(c, b, f)
+                });
+                const e = () => {
+                    $.AlertScrollManager.savePosition(c, b)
+                };
+                A = [x.getElement(b, ".alert-scroll-wrapper"),
+                    x.getElement(b, ".domquery-alert-body"), b.querySelector('div[style*="overflow: auto"]'), b.querySelector('div[style*="overflow-y: auto"]'), b.querySelector('div[style*="overflow-y: scroll"]'), b
+                ].filter(d => null !== d);
+                A.forEach(d => {
+                    d.addEventListener("scroll", e, {
+                        passive: !0
+                    })
+                });
+                b.scrollListener = e;
+                b.scrollElements = A
+            }
+        }
+        let T = 0,
+            q = 0,
+            m = 0,
+            t = 0,
+            G = 0,
+            aa = !1,
+            ia = null,
+            ka = 0,
+            ha = 0,
+            Y = 1,
+            Ea = 0,
+            ra = !1,
+            Ba = null,
+            ya = !1,
+            Aa = !1,
+            xa = 0,
+            da = 0;
+        if (void 0 !== a.LC || void 0 !== a.RC || void 0 !== a.TC || void 0 !== a.BC)
+            if (!0 === a.swipe) {
+                const c = void 0 !== a.LC ?
+                    "LC" : void 0 !== a.RC ? "RC" : void 0 !== a.TC ? "TC" : "BC";
+                let f = x.getDocumentElement(".domquery-shadow-overlay"),
+                    e = null,
+                    d = null;
+                const l = () => {
+                    G = t = m = q = T = 0;
+                    aa = !1;
+                    ia = null;
+                    Aa = ya = !1;
+                    ha = ka = 0;
+                    Y = 1;
+                    b.style.transition = "";
+                    f && (f.style.transition = "")
+                };
+                (A = x.getElement(b, ".domquery-alert-close-btn") || x.getElement(b, ".domquery-close-x-btn")) && A.addEventListener("click", l);
+                b.querySelectorAll(".domquery-alert-cancel-btn, .domquery-alert-confirm-btn").forEach(k => {
+                    k.addEventListener("click", l)
+                });
+
+                function u() {
+                    const k = b.scrollTop;
+                    ra = 1 < Math.abs(k - Ea);
+                    Ea = k;
+                    ra && (aa || ya) && (aa = !1, ia = null, Aa = ya = !1, "LC" === c || "RC" === c ? b.style.left = `${ka}px` : b.style.top = `${ha}px`, "_self" === a.parent ? (e && (e.style.opacity = Y), d && d.initialOpacity && (d.style.opacity = d.initialOpacity)) : f && (f.style.opacity = Y))
+                }
+                b.addEventListener("scroll", () => {
+                    u();
+                    ra && (aa = !1, ia = null, Aa = ya = !1, b.style.left = `${ka}px`, f && (f.style.opacity = Y))
+                }, {
+                    passive: !0
+                });
+                b.addEventListener("touchstart", k => {
+                    if (!k.target.closest(".editor-wrapper") && !k.target.closest(".domquery-alert-close-btn, .domquery-close-x-btn, .domquery-alert-cancel-btn, .domquery-alert-confirm-btn") &&
+                        !K) {
+                        var n = Array.from(document.querySelectorAll(".domquery-alert"));
+                        if (n.findIndex(N => N.getAttribute("data-instance-id") === a.instanceId) === n.length - 1)
+                            if (T = k.touches[0].clientX, q = k.touches[0].clientY, m = Date.now(), aa = !1, ia = null, Aa = ya = !1, G = t = 0, k = b.getBoundingClientRect(), ka = k.left, ha = k.top, "_self" === a.parent) {
+                                if (e = document.querySelector(`.domquery-shadow-overlay[data-instance-id="${a.instanceId}"]`), k = parseInt(a.instanceId) - 1, d = document.querySelector(`.domquery-shadow-overlay[data-instance-id="${k}"]`)) d.initialOpacity =
+                                    parseFloat(g.getComputedStyle(d).opacity)
+                            } else(f = document.querySelector(`.domquery-shadow-overlay[data-instance-id="${a.instanceId}"]`)) && (Y = parseFloat(g.getComputedStyle(f).opacity))
+                    }
+                }, {
+                    passive: !0
+                });
+                b.addEventListener("touchmove", k => {
+                    if (!k.target.closest(".editor-wrapper") && (k.stopPropagation(), !k.target.closest(".domquery-alert-close-btn, .domquery-close-x-btn, .domquery-alert-cancel-btn, .domquery-alert-confirm-btn") && !K)) {
+                        var n = k.target.closest(".domquery-alert").getAttribute("data-instance-id");
+                        if (!1 !== v.options[n]?.swipe) {
+                            n = k.touches[0];
+                            var N = n.clientX - T,
+                                U = n.clientY - q;
+                            t = N;
+                            G = U;
+                            if (!ra) {
+                                n = void 0 !== a.LC ? "LC" : void 0 !== a.RC ? "RC" : void 0 !== a.TC ? "TC" : "BC";
+                                if (!aa && (8 < Math.abs(N) || 8 < Math.abs(U)) && k.cancelable && null === ia) {
+                                    var H = Math.abs(N),
+                                        z = Math.abs(U);
+                                    const sa = 20 < H + z ? 1.3 : 2;
+                                    switch (n) {
+                                        case "LC":
+                                            0 > N && H > z * sa && (aa = ya = ia = !0, 20 < H && (k.preventDefault(), Aa = !0));
+                                            break;
+                                        case "RC":
+                                            0 < N && H > z * sa && (aa = ya = ia = !0, 20 < H && (k.preventDefault(), Aa = !0));
+                                            break;
+                                        case "TC":
+                                            0 > U && z > H * sa && (ia = !1, aa = ya = !0, 20 < z && (k.preventDefault(),
+                                                Aa = !0));
+                                            break;
+                                        case "BC":
+                                            0 < U && z > H * sa && (ia = !1, aa = ya = !0, 20 < z && (k.preventDefault(), Aa = !0))
+                                    }
+                                }
+                                ya && !Aa && k.cancelable && (H = Math.abs(N), z = Math.abs(U), 20 < (ia ? H : z) && (k.preventDefault(), Aa = !0));
+                                ya && (k.stopPropagation(), k = b.offsetWidth, H = b.offsetHeight, z = 1 * ("LC" === n || "RC" === n ? k : H), k = N, H = U, ia ? (H = 0, "LC" === n ? k = Math.max(-z, Math.min(0, N)) : "RC" === n && (k = Math.min(z, Math.max(0, N)))) : (k = 0, "TC" === n ? H = Math.max(-z, Math.min(0, U)) : "BC" === n && (H = Math.min(z, Math.max(0, U)))), b.style.transform = "LC" === n || "RC" === n ? `translate3d(${k}px, -50%, 0)` :
+                                    `translate3d(-50%, ${H}px, 0)`, N = "LC" === n || "RC" === n ? Math.abs(k) / z : Math.abs(H) / z, "_self" === a.parent ? (e && (e.style.opacity = Y - Y * N), d && (d.style.opacity = d.initialOpacity + (1 - d.initialOpacity) * N)) : f && (f.style.opacity = Y - Y * N), v.options[a.instanceId]?.swipeCallback && "function" === typeof v.options[a.instanceId].swipeCallback && (U = Date.now(), z = "LC" === n || "RC" === n ? Math.abs(k) / Math.max(U - m, 1) : Math.abs(H) / Math.max(U - m, 1), n = {
+                                        direction: n.toLowerCase(),
+                                        velocity: z,
+                                        timeElapsed: U - m,
+                                        progress: N,
+                                        deltaX: k,
+                                        deltaY: H,
+                                        instanceId: a.instanceId,
+                                        phase: "progress"
+                                    }, v.options[a.instanceId].swipeCallback(n)))
+                            }
+                        }
+                    }
+                }, {
+                    passive: !1
+                });
+                b.addEventListener("touchend", k => {
+                    if (!k.target.closest(".editor-wrapper") && ya && !K)
+                        if (Ba && (cancelAnimationFrame(Ba), Ba = null), k.stopPropagation(), u(), ra) b.style.transition = `all ${p}ms`, "LC" === c || "RC" === c ? b.style.left = `${ka}px` : b.style.top = `${ha}px`, "_self" === a.parent ? (e && (e.style.transition = `opacity ${p}ms`, e.style.opacity = Y), d && d.initialOpacity && (d.style.transition = `opacity ${p}ms`, d.style.opacity = d.initialOpacity)) : f &&
+                            (f.style.transition = `opacity ${p}ms`, f.style.opacity = Y);
+                        else {
+                            k = Date.now() - m;
+                            var n = "LC" === c || "RC" === c ? Math.abs(t) / Math.max(k, 1) : Math.abs(G) / Math.max(k, 1);
+                            xa = n;
+                            da = k;
+                            if (.5 < n) {
+                                b.timeoutId && (clearTimeout(b.timeoutId), b.timeoutId = null);
+                                a.timeOut && (a.timeOut = null);
+                                b._elementInfos && b._elementInfos.forEach(H => {
+                                    if (H.element) try {
+                                        H.nextSibling ? H.parent.insertBefore(H.element, H.nextSibling) : H.parent.appendChild(H.element), H.element.style.display = H.originalDisplay
+                                    } catch (z) {}
+                                });
+                                aa = !1;
+                                ia = null;
+                                ha = ka = G = t = m = q = T = 0;
+                                Y =
+                                    1;
+                                const N = .5 < n ? Math.max(Math.floor(k / 2), 600) : Math.max(k, 600),
+                                    U = document.querySelectorAll(`.domquery-${a.toast?"toast":"shadow"}-overlay[data-instance-id="${a.instanceId}"]`);
+                                U.forEach(H => {
+                                    H.style.transition = `opacity ${N}ms linear`;
+                                    H.style.opacity = "0"
+                                });
+                                b.style.transition = `all ${N}ms ease-out`;
+                                switch (c) {
+                                    case "LC":
+                                        b.style.left = "-100%";
+                                        break;
+                                    case "RC":
+                                        b.style.left = "100%";
+                                        break;
+                                    case "TC":
+                                        b.style.top = "-100%";
+                                        break;
+                                    case "BC":
+                                        b.style.top = "100%"
+                                }
+                                L.setTimeoutRAF(() => {
+                                    U.forEach(H => {
+                                        H && H.parentNode && H.parentNode.removeChild(H)
+                                    });
+                                    L.setTimeoutRAF(() => {
+                                        la(c.toLowerCase(), !0, 0, "swipe")
+                                    }, 100)
+                                }, N)
+                            } else {
+                                b.style.transition = "all 300ms";
+                                switch (c) {
+                                    case "LC":
+                                    case "RC":
+                                        b.style.left = `${ka}px`;
+                                        b.style.transform = "translate(0, -50%)";
+                                        break;
+                                    case "TC":
+                                    case "BC":
+                                        b.style.top = `${ha}px`, b.style.transform = "translate(-50%, 0)"
+                                }
+                                "_self" === a.parent ? (e && (e.style.transition = "opacity 300ms", e.style.opacity = Y), d && d.initialOpacity && (d.style.transition = "opacity 300ms", d.style.opacity = d.initialOpacity)) : f && (f.style.transition = "opacity 300ms", f.style.opacity =
+                                    Y);
+                                L.setTimeoutRAF(() => {
+                                    b.style.transition = "";
+                                    document.querySelectorAll(".domquery-shadow-overlay").forEach(N => {
+                                        N.style.transition = ""
+                                    })
+                                }, 300)
+                            }
+                        }
+                }, {
+                    passive: !0
+                });
+                b.addEventListener("touchcancel", () => {
+                    aa && (aa = !1, b.style.overflow = "auto", b.style.willChange = "auto")
+                }, {
+                    passive: !0
+                })
+            } else b.addEventListener("touchmove", c => {
+                const f = c.target.closest('.alert-scroll-wrapper, [style*="overflow: auto"], [id="chat-output"], [style*="overflow-y:auto"]');
+                a.forceScroll || a.scrollY || f && (a.scroll || a.scrollY || a.scrollX) ?
+                    c.stopPropagation() : c.preventDefault()
+            }, {
+                passive: !1
+            });
+        createAlertContext = (c, f = [], e = "default") => ({
+            totalResults: f,
+            arr: f,
+            element: b,
+            el: b,
+            closeType: e,
+            focus: d => {
+                const l = b.querySelectorAll("input");
+                l[d] && l[d].focus()
+            },
+            close: function(d = "xclose") {
+                this._closeWasCalled = !0;
+                this._closeTypeParam = d;
+                if (this._functionCallbackExecuting) return !0;
+                try {
+                    if ("_self" === a.parent) {
+                        const l = x.getElement(b, ".domquery-close-x-btn") || x.getElement(b, ".domquery-alert-close-btn");
+                        l ? l.click() : la(d, !0, 0, "function")
+                    } else la(d, !0, 0, "function")
+                } catch (l) {
+                    try {
+                        const u =
+                            x.getElement(b, ".domquery-close-x-btn") || x.getElement(b, ".domquery-alert-close-btn");
+                        u && u.click()
+                    } catch (u) {
+                        console.error("[close] \uc5d0\ub7ec:", u)
+                    }
+                }
+                return !0
+            },
+            setLoading: (d, l = 0, u) => {
+                const k = b.querySelector(".domquery-alert-loading");
+                k ? 0 < l ? setTimeout(() => {
+                    k.style.display = d ? "flex" : "none";
+                    "function" === typeof u && u()
+                }, l) : (k.style.display = d ? "flex" : "none", "function" === typeof u && u()) : "function" === typeof u && u()
+            },
+            disableParentScroll: function(d) {
+                b._scrollPosition = {
+                    x: g.pageXOffset || document.documentElement.scrollLeft,
+                    y: g.pageYOffset || document.documentElement.scrollTop
+                };
+                d ? d.split(",").map(l => l.trim()).forEach(l => {
+                    "body" === l || "html" === l ? (document.body.style.cssText += "overflow: hidden !important;", document.documentElement.style.cssText += "overflow: hidden !important;") : document.querySelectorAll(l).forEach(u => {
+                        u._originalOverflow = u.style.overflow;
+                        u._originalPosition = u.style.position;
+                        u.style.cssText += "overflow: hidden !important;"
+                    })
+                }) : (document.body.style.cssText += "overflow: hidden !important;", document.documentElement.style.cssText +=
+                    "overflow: hidden !important;");
+                !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+                    isIOS: !1
+                }).isIOS && (document.body.style.position = "fixed", document.body.style.width = "100%", document.body.style.top = `-${b._scrollPosition.y}px`);
+                return this
+            },
+            enableParentScroll: function(d) {
+                d ? d.split(",").map(l => l.trim()).forEach(l => {
+                    "body" === l || "html" === l ? (document.body.style.overflow = "", document.documentElement.style.overflow = "") : document.querySelectorAll(l).forEach(u => {
+                        void 0 !== u._originalOverflow && (u.style.overflow =
+                            u._originalOverflow, delete u._originalOverflow);
+                        void 0 !== u._originalPosition && (u.style.position = u._originalPosition, delete u._originalPosition)
+                    })
+                }) : (document.body.style.overflow = "", document.documentElement.style.overflow = "");
+                !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+                    isIOS: !1
+                }).isIOS && (document.body.style.position = "", document.body.style.width = "", document.body.style.top = "");
+                if (d = b._scrollPosition) g.scrollTo(d.x, d.y), delete b._scrollPosition;
+                return this
+            },
+            controlElementScroll: function(d,
+                l) {
+                d && ("disable" === l ? (d._savedOverflow = d.style.overflow, d._savedScrollTop = d.scrollTop, d.style.overflow = "hidden") : "enable" === l && (d.style.overflow = d._savedOverflow || "auto", void 0 !== d._savedScrollTop && (d.scrollTop = d._savedScrollTop)))
+            },
+            next: (d, l, u = 400, k, n, N) => {
+                let U = null;
+                const H = "CC TC LC RC BC RL LR TB BT".split(" ");
+                "function" === typeof l ? (N = u, n = l, u = 400, l = null) : "number" === typeof l ? ("function" === typeof u ? (N = n, n = u) : "string" === typeof u && H.includes(u) && (U = u, "function" === typeof k && (N = n, n = k)), u = l, l = null) :
+                    "function" === typeof u ? (N = n, n = u, u = 400) : "string" === typeof u && H.includes(u) ? (U = u, "function" === typeof k && (N = n, n = k), u = 400) : "number" === typeof u && "string" === typeof k && H.includes(k) && (U = k);
+                this.totalResults || (this.totalResults = {});
+                k = a._currentStepKey || "first";
+                l && (Array.isArray(l) || "" !== l) && (this.totalResults[k] = l);
+                a._nextStepKey = "" === d ? "first" : d;
+                let z;
+                if ((z = "" === d ? a._originalFirstStepOptions || {} : a[d]) && "object" === typeof z) {
+                    var sa = this.totalResults ? {
+                            ...this.totalResults
+                        } : {},
+                        P = document.querySelector(`.domquery-alert[data-instance-id="${a.instanceId}"]`);
+                    a._stepInputValues || (a._stepInputValues = {});
+                    if (P) {
+                        l = a._currentStepKey || "first";
+                        const S = {};
+                        P.querySelectorAll("input, textarea, select").forEach((na, ja) => {
+                            S[ja] = "checkbox" === na.type || "radio" === na.type ? na.checked : na.value
+                        });
+                        0 < Object.keys(S).length && (a._stepInputValues[l] = S)
+                    }
+                    P ? L.setTimeoutRAF(() => {
+                        a._hasNext = !0;
+                        var S = {};
+                        for (var na in a) a[na] && "object" === typeof a[na] && !Array.isArray(a[na]) && "_originalFirstStepOptions" !== na && "_hasNext" !== na && "instanceId" !== na && "_stepInputValues" !== na && "_currentStepKey" !==
+                            na && (S[na] = a[na]);
+                        Object.assign(a, z, S, {
+                            function: function(Q) {
+                                this.arr = this.totalResults = {
+                                    ...sa
+                                };
+                                Q && (Array.isArray(Q) || "" !== Q) && (this.totalResults[d || "first"] = Q, this.arr = {
+                                    ...this.totalResults
+                                });
+                                if (z.function) return this._functionCallbackExecuting = !0, Q = z.function.call(this, Q), this._functionCallbackExecuting = !1, Q
+                            }
+                        });
+                        const ja = P.querySelector(".domquery-alert-body"),
+                            fa = P.querySelector(".domquery-text-container"),
+                            Ja = (Q, R, I) => {
+                                ja && void 0 !== Q && (ja.innerHTML = Q);
+                                fa && void 0 !== R && (fa.innerHTML = R);
+                                (Q = P.querySelector(".domquery-text-bottom-container")) &&
+                                void 0 !== I && (Q.innerHTML = I);
+                                const ca = "" === d ? "first" : d;
+                                a._stepInputValues && a._stepInputValues[ca] && setTimeout(() => {
+                                    const pa = P.querySelectorAll("input, textarea, select"),
+                                        V = a._stepInputValues[ca];
+                                    V && pa.forEach((X, B) => {
+                                        void 0 !== V[B] && ("checkbox" === X.type || "radio" === X.type ? X.checked = V[B] : X.value = V[B])
+                                    })
+                                }, 10);
+                                a._currentStepKey = a._nextStepKey || ("" === d ? "first" : d)
+                            },
+                            Ca = (Q, R = !1) => {
+                                if (!(!Q || ja.contains(Q) || fa && fa.contains(Q))) {
+                                    var I = Q.querySelector(".domquery-alert-close-btn");
+                                    if (I) {
+                                        if (R) {
+                                            var ca = z.$Okhover ||
+                                                a.$Okhover || "opacity: 1;",
+                                                pa = ["padding: 6px 10px;", "background: " + (z.$OkBgcolor || z.OkBgcolor || a.$OkBgcolor || a.OkBgcolor || "#E0E0E0") + ";", "color: " + (z.$OkColor || z.OkColor || a.$OkColor || a.OkColor || "#000000") + ";", "border: none;border-radius: 3px;cursor: pointer;opacity: 0.9;font-size:0.9em;transition: all 0.2s;margin-left: 10px;", z.$OkStyle || a.$OkStyle || ""].join("");
+                                            I.style.cssText = pa;
+                                            I.setAttribute("onmouseover", "this.style.cssText = `" + pa + "; " + ca + "`");
+                                            I.setAttribute("onmouseout", "this.style.cssText = `" +
+                                                pa + "`");
+                                            I.offsetHeight
+                                        }
+                                        if (void 0 !== z.$Ok || void 0 !== a.$Ok) I.textContent = z.$Ok || a.$Ok
+                                    }
+                                    if (I = Q.querySelector(".alert-cancel-btn, .domquery-alert-cancel-btn"))
+                                        if (R && (R = z.$cancelhover || a.$cancelhover || "opacity: 1;", ca = ["padding: 6px 10px;", "background: " + (z.$cancelBgcolor || z.cancelBgcolor || a.$cancelBgcolor || a.cancelBgcolor || "#e74c3c") + ";", "color: " + (z.$cancelColor || z.cancelColor || a.$cancelColor || a.cancelColor || "#FFFFFF") + ";", "border: none;border-radius: 3px;cursor: pointer;opacity: 0.9;font-size:0.9em;transition: all 0.2s;margin-left: 10px;",
+                                                z.$cancelStyle || a.$cancelStyle || ""
+                                            ].join(""), I.style.cssText = ca, I.setAttribute("onmouseover", "this.style.cssText = `" + ca + "; " + R + "`"), I.setAttribute("onmouseout", "this.style.cssText = `" + ca + "`")), void 0 !== z.$cancel || void 0 !== a.$cancel) I.textContent = z.$cancel || a.$cancel;
+                                    var V = Q.querySelector(".alert-prev-btn");
+                                    if (void 0 !== z.$prev && !1 !== z.$prev || void 0 !== a.$prev && !1 !== a.$prev)
+                                        if (R = z.$prevhover || a.$prevhover || "opacity: 1;", ca = ["padding: 6px 10px;", "background: " + (z.$prevBgcolor || a.$prevBgcolor || "#95a5a6") +
+                                                ";", "color: " + (z.$prevColor || a.$prevColor || "#FFFFFF") + ";", "border: none;border-radius: 3px;cursor: pointer;opacity: 0.9;font-size:0.9em;transition: all 0.2s;margin-left: 10px;", z.$prevStyle || a.$prevStyle || ""
+                                            ].join(""), pa = X => {
+                                                z.prev && "function" === typeof z.prev ? X.onclick = function() {
+                                                    const B = createAlertContext("prev", [], "button");
+                                                    B.close = function(ea = "xclose") {
+                                                        la(ea, !0, 0, "button")
+                                                    };
+                                                    z.prev.call(B)
+                                                } : a.prev && "function" === typeof a.prev && (X.onclick = function() {
+                                                    const B = createAlertContext("prev", [], "button");
+                                                    B.close = function(ea = "xclose") {
+                                                        la(ea, !0, 0, "button")
+                                                    };
+                                                    a.prev.call(B)
+                                                })
+                                            }, V) {
+                                            V.style.cssText = ca;
+                                            V.setAttribute("onmouseover", "this.style.cssText = `" + ca + "; " + R + "`");
+                                            V.setAttribute("onmouseout", "this.style.cssText = `" + ca + "`");
+                                            if (void 0 !== z.$prev || void 0 !== a.$prev) V.textContent = z.$prev || a.$prev;
+                                            pa(V)
+                                        } else V = document.createElement("button"), V.className = "alert-prev-btn", V.style.cssText = ca, V.setAttribute("onmouseover", "this.style.cssText = `" + ca + "; " + R + "`"), V.setAttribute("onmouseout", "this.style.cssText = `" +
+                                            ca + "`"), V.textContent = z.$prev || a.$prev || "\uc774\uc804", pa(V), I ? Q.insertBefore(V, I) : Q.appendChild(V);
+                                    else V && V.parentNode && V.parentNode.removeChild(V)
+                                }
+                            };
+                        if (ja) {
+                            const Q = ((J, E) => {
+                                    if (E) return `<div style="font-size:${a.Font||"16px"}; font-weight:bold; color:${a.titleColor||"#000000"}">${a.title}</div>\n\t\t\t\t\t\t\t\t\t\t   <hr style="border:none; height:1px; background-color:rgba(0,0,0,0.1); margin:10px 0">\n\t\t\t\t\t\t\t\t\t\t   <div style="font-size:${a.font||"14px"}; color:${a.color||"#000000"}">${J}</div>`;
+                                    let W;
+                                    J.includes("\n") ? W = J.split("\n", 2) : J.includes("<br>") && (W = J.split("<br>", 2));
+                                    return W ? `<div style="font-size:${a.Font||"16px"}; font-weight:bold; color:${a.titleColor||"#000000"}">${W[0]}</div>\n\t\t\t\t\t\t\t\t\t\t   <hr style="border:none; height:1px; background-color:rgba(0,0,0,0.1); margin:10px 0">\n\t\t\t\t\t\t\t\t\t\t   <div style="font-size:${a.font||"14px"}; color:${a.color||"#000000"}">${W[1]}</div>` : `<div style="font-size:${a.Font||"16px"}; font-weight:bold; color:${a.titleColor||
+"#000000"}">${J}</div>`
+                                })(z.message || a.message || "", "" !== a.title),
+                                R = (() => {
+                                    const J = void 0 !== z.text ? z.text : a.text;
+                                    if (!J) return "";
+                                    if ("string" === typeof J) return J;
+                                    if ("function" === typeof J) try {
+                                        const E = J();
+                                        if ("string" === typeof E) return E;
+                                        if (E instanceof Element) return E.outerHTML
+                                    } catch (E) {}
+                                    return ""
+                                })(),
+                                I = (() => {
+                                    const J = z.textBottom;
+                                    if (void 0 === J || !J) return "";
+                                    if ("string" === typeof J) return J;
+                                    if ("function" === typeof J) try {
+                                        const E = J();
+                                        if ("string" === typeof E) return E;
+                                        if (E instanceof Element) return E.outerHTML
+                                    } catch (E) {}
+                                    return ""
+                                })(),
+                                ca = J => {
+                                    if (void 0 === J) return "auto";
+                                    if ("number" === typeof J) return J + "px";
+                                    if ("string" === typeof J) {
+                                        if (/px|%|vh|vw|rem|em|ch|ex|cm|mm|in|pt|pc/i.test(J)) return J;
+                                        const E = parseFloat(J);
+                                        if (!isNaN(E)) return E + "px"
+                                    }
+                                    return J
+                                },
+                                pa = (J, E, W, va) => {
+                                    W = Object.assign({}, a, E);
+                                    if (void 0 !== E.bgcolor || void 0 !== a.bgcolor) J.style.background = W.bgcolor;
+                                    if (void 0 !== E.radius || void 0 !== a.radius) J.style.borderRadius = W.radius;
+                                    if (void 0 !== E.border || void 0 !== a.border) J.style.border = W.border || "none";
+                                    if (void 0 !== E.borderWidth || void 0 !==
+                                        a.borderWidth) J.style.borderWidth = W.borderWidth || "";
+                                    if (void 0 !== E.borderStyle || void 0 !== a.borderStyle) J.style.borderStyle = W.borderStyle || "";
+                                    if (void 0 !== E.borderColor || void 0 !== a.borderColor) J.style.borderColor = W.borderColor || "";
+                                    if (void 0 !== E.shadowBox || void 0 !== a.shadowBox) !1 === W.shadowBox ? J.style.boxShadow = "none" : "string" === typeof W.shadowBox ? J.style.boxShadow = W.shadowBox : "transparent" !== W.bgcolor && (J.style.boxShadow = "0 2px 10px rgba(0,0,0,0.3)");
+                                    if (void 0 !== E.opacity || void 0 !== a.opacity) J.style.opacity =
+                                        "number" === typeof W.opacity ? String(W.opacity) : "1";
+                                    if (void 0 !== E.margin || void 0 !== a.margin) J.style.margin = W.margin || "0";
+                                    if (void 0 !== E.padding || void 0 !== a.padding) {
+                                        va = "0" === W.padding ? "0" : ca(W.padding);
+                                        const oa = J.querySelector(".alert-scroll-wrapper") || J.querySelector(".domquery-alert-body")?.parentElement;
+                                        oa && (oa.style.padding = va)
+                                    }
+                                    if (void 0 !== E.minWidth || void 0 !== a.minWidth) J.style.minWidth = W.minWidth ? ca(W.minWidth) : "";
+                                    if (void 0 !== E.maxWidth || void 0 !== a.maxWidth) J.style.maxWidth = W.maxWidth ? ca(W.maxWidth) :
+                                        "";
+                                    if (void 0 !== E.minHeight || void 0 !== a.minHeight) J.style.minHeight = W.minHeight ? ca(W.minHeight) : "";
+                                    if (void 0 !== E.maxHeight || void 0 !== a.maxHeight) J.style.maxHeight = W.maxHeight ? ca(W.maxHeight) : ""
+                                },
+                                V = Math.max(P.offsetWidth, 1) + "px",
+                                X = Math.max(P.offsetHeight, 1) + "px",
+                                B = getComputedStyle(P).width,
+                                ea = getComputedStyle(P).height;
+                            let O = B,
+                                ba = ea;
+                            void 0 !== z.width && (O = ca(z.width));
+                            void 0 !== z.height && (ba = ca(z.height));
+                            const Fa = O !== B || ba !== ea;
+                            S = u || 400;
+                            if (U) {
+                                const J = (oa, qa, ta = !1) => {
+                                    const ua = ta ? -1 : 1;
+                                    return "CC" === oa ? `scale(${ta?
+1-qa:qa})` : "LC" === oa ? `translate3d(${ua*(ta?100*qa:100*(1-qa))}%, 0, 0)` : "RC" === oa ? `translate3d(${ua*(ta?100*-qa:100*-(1-qa))}%, 0, 0)` : "TC" === oa ? `translate3d(0, ${ua*(ta?100*qa:100*(1-qa))}%, 0)` : "BC" === oa ? `translate3d(0, ${ua*(ta?100*-qa:100*-(1-qa))}%, 0)` : "RL" === oa ? `translate3d(${ua*(ta?100*-qa:100*-(1-qa))}%, 0, 0)` : "LR" === oa ? `translate3d(${ua*(ta?100*qa:100*(1-qa))}%, 0, 0)` : "TB" === oa ? `translate3d(0, ${ua*(ta?100*qa:100*(1-qa))}%, 0)` : "BT" === oa ? `translate3d(0, ${ua*(ta?100*-qa:100*-(1-qa))}%, 0)` :
+                                        "translate3d(0, 0, 0)"
+                                };
+                                if (Fa) {
+                                    na = Math.max(parseFloat(V), 1);
+                                    const oa = Math.max(parseFloat(X), 1);
+                                    P.style.width = na + "px";
+                                    P.style.height = oa + "px";
+                                    P.style.minWidth = na + "px";
+                                    P.style.minHeight = oa + "px";
+                                    P.style.maxWidth = na + "px";
+                                    P.style.maxHeight = oa + "px";
+                                    P.style.boxSizing = "border-box";
+                                    P.offsetWidth;
+                                    P.offsetHeight
+                                }
+                                ja.style.willChange = "transform, opacity";
+                                ja.style.backfaceVisibility = "hidden";
+                                ja.style.transition = "none";
+                                ja.style.transform = "translate3d(0, 0, 0)";
+                                ja.style.opacity = "1";
+                                fa && (fa.style.willChange = "transform, opacity",
+                                    fa.style.backfaceVisibility = "hidden", fa.style.transition = "none", fa.style.transform = "translate3d(0, 0, 0)", fa.style.opacity = "1");
+                                "CC" === U && (ja.style.transformOrigin = "center center", fa && (fa.style.transformOrigin = "center center"));
+                                na = P.querySelectorAll(".domquery-alert-close-btn, .alert-cancel-btn, .alert-confirm-btn, .alert-prev-btn, .domquery-alert-cancel-btn, .domquery-alert-confirm-btn");
+                                let E = null;
+                                0 < na.length && (E = na[0].parentElement, !E || ja.contains(E) || fa && fa.contains(E) || (E.style.willChange = "transform, opacity",
+                                    E.style.backfaceVisibility = "hidden", E.style.transition = "none", E.style.transform = "translate3d(0, 0, 0)", E.style.opacity = "1"));
+                                ja.offsetHeight;
+                                fa && fa.offsetHeight;
+                                const W = .5 * S,
+                                    va = .5 * S;
+                                requestAnimationFrame(() => {
+                                    const oa = performance.now(),
+                                        qa = ta => {
+                                            ta = Math.min((ta - oa) / W, 1);
+                                            const ua = 1 - Math.pow(1 - ta, 3);
+                                            ja.style.transform = J(U, ua, !0);
+                                            ja.style.opacity = String(1 - ua);
+                                            fa && (fa.style.transform = J(U, ua, !0), fa.style.opacity = String(1 - ua));
+                                            E && (E.style.transform = J(U, ua, !0), E.style.opacity = String(1 - ua));
+                                            if (1 > ta) requestAnimationFrame(qa);
+                                            else {
+                                                Ja(Q, R, I);
+                                                ta = P.querySelectorAll(".domquery-alert-close-btn, .alert-cancel-btn, .alert-confirm-btn, .alert-prev-btn, .domquery-alert-cancel-btn, .domquery-alert-confirm-btn");
+                                                let wa = null;
+                                                0 < ta.length && (wa = ta[0].parentElement, Ca(wa, !1), !wa || ja.contains(wa) || fa && fa.contains(wa) || (wa.style.willChange = "transform, opacity", wa.style.backfaceVisibility = "hidden", wa.style.transition = "none", wa.style.transform = J(U, 0, !1), wa.style.opacity = "0"));
+                                                ja.style.transform = J(U, 0, !1);
+                                                ja.style.opacity = "0";
+                                                fa && (fa.style.transform =
+                                                    J(U, 0, !1), fa.style.opacity = "0");
+                                                pa(P, z, O || B, ba || ea);
+                                                ja.offsetHeight;
+                                                fa && fa.offsetHeight;
+                                                requestAnimationFrame(() => {
+                                                    if (Fa) {
+                                                        const Ga = parseFloat(V);
+                                                        var La = parseFloat(X),
+                                                            Ma = O,
+                                                            Ka = ba,
+                                                            Ia = !1;
+                                                        "auto" === ba && (Ka = P.style.height, P.style.height = "auto", Ia = P.offsetHeight, P.style.height = Ka || La + "px", Ka = Ia + "px", Ia = !0);
+                                                        "auto" === O && (La = P.style.width, P.style.width = "auto", Ma = P.offsetWidth, P.style.width = La || Ga + "px", Ma += "px", Ia = !0);
+                                                        P.style.transition = `width ${va}ms ease-out, height ${va}ms ease-out`;
+                                                        P.offsetWidth;
+                                                        O !== B && (P.style.width =
+                                                            Ma);
+                                                        ba !== ea && (P.style.height = Ka);
+                                                        Ia && setTimeout(() => {
+                                                            "auto" === O && (P.style.width = "auto");
+                                                            "auto" === ba && (P.style.height = "auto");
+                                                            P.style.transition = ""
+                                                        }, va)
+                                                    }
+                                                    P.offsetHeight;
+                                                    const Oa = performance.now(),
+                                                        Na = Ga => {
+                                                            Ga = Math.min((Ga - Oa) / va, 1);
+                                                            const Ha = 1 - Math.pow(1 - Ga, 3);
+                                                            ja.style.transform = J(U, Ha, !1);
+                                                            ja.style.opacity = String(Ha);
+                                                            fa && (fa.style.transform = J(U, Ha, !1), fa.style.opacity = String(Ha));
+                                                            wa && (wa.style.transform = J(U, Ha, !1), wa.style.opacity = String(Ha));
+                                                            1 > Ga ? requestAnimationFrame(Na) : (ja.style.willChange = "auto",
+                                                                ja.style.backfaceVisibility = "", ja.style.transition = "", ja.style.transform = "", ja.style.opacity = "", "CC" === U && (ja.style.transformOrigin = ""), fa && (fa.style.willChange = "auto", fa.style.backfaceVisibility = "", fa.style.transition = "", fa.style.transform = "", fa.style.opacity = "", "CC" === U && (fa.style.transformOrigin = "")), E && (E.style.willChange = "auto", E.style.backfaceVisibility = "", E.style.transition = "", E.style.transform = "", E.style.opacity = ""), wa && (wa.style.willChange = "auto", wa.style.backfaceVisibility = "", wa.style.transition =
+                                                                    "", wa.style.transform = "", wa.style.opacity = ""), Fa && (P.style.transition = ""), "function" === typeof n && n(this))
+                                                        };
+                                                    requestAnimationFrame(Na)
+                                                })
+                                            }
+                                        };
+                                    requestAnimationFrame(qa)
+                                })
+                            } else Fa && (O !== B && (P.style.width = O), ba !== ea && (P.style.height = ba)), pa(P, z, O || B, ba || ea), Ja(Q, R, I), S = P.querySelectorAll(".domquery-alert-close-btn, .alert-cancel-btn, .alert-confirm-btn, .alert-prev-btn, .domquery-alert-cancel-btn, .domquery-alert-confirm-btn"), 0 < S.length && Ca(S[0].parentElement, !1), "function" === typeof n && n(this)
+                        } else "function" ===
+                            typeof n && n(this)
+                    }, 0) : "function" === typeof N && N(Error("Current alert box not found"))
+                } else "function" === typeof N && N(Error(`Next options not found for key: ${d}`))
+            }
+        });
+        const za = !Object.entries(a).some(([c, f]) => "CC TC LC RC BC TL TR BL BR".split(" ").includes(c) && void 0 !== f);
+        let Da;
+        if (za && r) {
+            w = w();
+            A = w.getBoundingClientRect();
+            let c = r.clientX,
+                f = r.clientY,
+                e, d;
+            if ("_self" === a.parent) {
+                if (A = a._parentAlert || (() => {
+                        const k = Array.from(document.querySelectorAll(".domquery-alert"));
+                        for (let n = k.length - 1; 0 <= n; n--)
+                            if (k[n].getAttribute("data-instance-id") !==
+                                a.instanceId) return k[n];
+                        return null
+                    })()) A = A.getBoundingClientRect(), c = r ? r.clientX : A.left + A.width / 2, f = r ? r.clientY : A.top + A.height / 2;
+                e = g.innerWidth / 2;
+                d = g.innerHeight / 2;
+                b.style.position = "fixed"
+            } else w !== document.body ? (b.style.position = "absolute", c -= A.left, f -= A.top, e = A.width / 2, d = A.height / 2) : (e = g.innerWidth / 2, d = g.innerHeight / 2, b.style.position = "fixed");
+            b.style.left = c + "px";
+            b.style.top = f + "px";
+            b.style.transform = "translate(-50%, -50%) scale(0)";
+            b.style.opacity = String("number" === typeof a.opacity ? a.opacity :
+                1);
+            w.appendChild(b);
+            const l = performance.now(),
+                u = k => {
+                    k = Math.min((k - l) / p, 1);
+                    if (a.easing) {
+                        [n] = a.easing.split(",").map(H => H.trim());
+                        var n = $._anieasing(0, 1, k, n)
+                    } else n = k;
+                    const N = f + (d - f) * n,
+                        U = "number" === typeof a.opacity ? a.opacity : 1;
+                    b.style.left = c + (e - c) * n + "px";
+                    b.style.top = N + "px";
+                    b.style.transform = `translate(-50%, -50%) scale(${n})`;
+                    b.style.opacity = String(U + (1 - U) * n);
+                    if (1 > k) requestAnimationFrame(u);
+                    else if (K = !1, b.style.opacity = 1, a.onOpen && "function" === typeof a.onOpen) {
+                        k = createAlertContext(null, [], "open");
+                        a.onOpen.call(k,
+                            b);
+                        if (!0 === a.scrollY || !0 === a.forceScroll)
+                            if (k = x.getElement(b, ".alert-scroll-wrapper")) k.style.overflow = "hidden auto", k.style.webkitOverflowScrolling = "touch", k.style.touchAction = "pan-y", b.querySelectorAll('[id="chat-output"], [style*="overflow-y:auto"]').forEach(H => {
+                                H.style.overflow = "auto";
+                                H.style.overflowY = "auto";
+                                H.style.webkitOverflowScrolling = "touch";
+                                H.style.touchAction = "pan-y"
+                            });
+                        if (!0 === a.noScrollRestore) {
+                            const H = x.getElement(b, ".alert-scroll-wrapper") || x.getElement(b, ".domquery-alert-body");
+                            if (H) {
+                                H.scrollTop =
+                                    0;
+                                k = (a && "number" === typeof a.openSpeed ? a.openSpeed : p) || 500;
+                                let z = !1;
+                                const sa = () => {
+                                    z || (H.scrollTop = 0, requestAnimationFrame(sa))
+                                };
+                                requestAnimationFrame(sa);
+                                setTimeout(() => {
+                                    z = !0
+                                }, k + 50)
+                            }
+                        }
+                        if (void 0 !== a.autoscroll) {
+                            const H = a.id || "default-scroll-position",
+                                z = "number" === typeof a.autoscroll ? a.autoscroll : 300;
+                            window.requestAnimationFrame(() => {
+                                M(H, b, z)
+                            })
+                        }
+                    }
+                };
+            requestAnimationFrame(u);
+            Da = {
+                finalTransform: "translate(-50%, -50%)"
+            }
+        } else Da = $.scaleArr(b, a, p), b.style.opacity = 1, L.setTimeoutRAF(() => {
+            if (a.onOpen && "function" ===
+                typeof a.onOpen) {
+                var c = createAlertContext(null, [], "open");
+                a.onOpen.call(c, b);
+                if (!0 === a.scrollY || !0 === a.forceScroll)
+                    if (c = x.getElement(b, ".alert-scroll-wrapper")) c.style.overflow = "hidden auto", c.style.webkitOverflowScrolling = "touch", c.style.touchAction = "pan-y", b.querySelectorAll('[id="chat-output"], [style*="overflow-y:auto"]').forEach(f => {
+                        f.style.overflow = "auto";
+                        f.style.overflowY = "auto";
+                        f.style.webkitOverflowScrolling = "touch";
+                        f.style.touchAction = "pan-y"
+                    });
+                if (!0 === a.noScrollRestore) {
+                    const f = x.getElement(b,
+                        ".alert-scroll-wrapper") || x.getElement(b, ".domquery-alert-body");
+                    if (f) {
+                        f.scrollTop = 0;
+                        c = (a && "number" === typeof a.openSpeed ? a.openSpeed : p) || 500;
+                        let e = !1;
+                        const d = () => {
+                            e || (f.scrollTop = 0, requestAnimationFrame(d))
+                        };
+                        requestAnimationFrame(d);
+                        setTimeout(() => {
+                            e = !0
+                        }, c + 50)
+                    }
+                }
+                if (void 0 !== a.autoscroll) {
+                    const f = a.id || "default-scroll-position",
+                        e = "number" === typeof a.autoscroll ? a.autoscroll : 300;
+                    window.requestAnimationFrame(() => {
+                        M(f, b, e)
+                    })
+                }
+            }
+        }, 0), L.setTimeoutRAF(() => {
+            K = !1
+        }, p);
+        a.loading && (w = b.querySelector(".domquery-alert-loading")) &&
+            (w.style.display = "flex");
+        a.TOPS && (w = {
+            button: null,
+            scrollListener: null,
+            create: function() {
+                let c = a.TOPS;
+                if ("string" === typeof a.TOPS && a.TOPS.startsWith("#")) {
+                    const e = document.querySelector(a.TOPS);
+                    e && (c = e.innerHTML)
+                } else !0 === a.TOPS && (c = '\n\t\t\t\t\t   <div class="domquery-tops-icon" style="\n\t\t\t\t\t\t  width: 40px;\n\t\t\t\t\t\t  height: 40px;\n\t\t\t\t\t\t  background-color: transparent;\n\t\t\t\t\t\t  border-radius: 50%;\n\t\t\t\t\t\t  display: flex;\n\t\t\t\t\t\t  justify-content: center;\n\t\t\t\t\t\t  align-items: center;\n\t\t\t\t\t\t  border: 2px solid rgba(150, 150, 150, 0.5);\n\t\t\t\t\t\t  transition: all 0.3s ease;\n\t\t\t\t\t   ">\n\t\t\t\t\t\t  <svg width="20" height="20" viewBox="0 0 24 24" fill="rgba(100, 100, 100, 0.8)">\n\t\t\t\t\t\t\t <path d="M7.41 15.41L12 10.83l4.59 4.58L18 14l-6-6-6 6z"></path>\n\t\t\t\t\t\t  </svg>\n\t\t\t\t\t   </div>\n\t\t\t\t\t');
+                "static" === getComputedStyle(b).position && (b.style.position = "relative");
+                this.button = document.createElement("div");
+                this.button.className = "domquery-tops-button";
+                this.button.setAttribute("data-instance-id", y);
+                this.button.innerHTML = c;
+                this.button.style.cssText = `\n\t\t\t\t\tposition: fixed;\n\t\t\t\t\tbottom: 15px;\n\t\t\t\t\tright: ${Z?"15px":"35px"};\n\t\t\t\t\topacity: 0;\n\t\t\t\t\ttransform: scale(0.7);\n\t\t\t\t\tcursor: pointer;\n\t\t\t\t\tz-index: 9999;\n\t\t\t\t\ttransition: all 0.4s cubic-bezier(0.25, 0.1, 0.25, 1);\n\t\t\t\t `;
+                Z;
+                this.button.addEventListener("mouseenter", () => {
+                    var e = this.button.querySelector(".domquery-tops-icon");
+                    e && (e.style.backgroundColor = "rgba(50, 50, 50, 0.8)", e.style.border = "2px solid rgba(70, 70, 70, 0.9)", e.style.boxShadow = "0 3px 8px rgba(0, 0, 0, 0.5)", e.style.transform = "scale(1.1)", (e = e.querySelector("svg")) && e.setAttribute("fill", "rgba(230, 230, 230, 0.9)"))
+                });
+                this.button.addEventListener("mouseleave", () => {
+                    var e = x.getElement(this.button, ".domquery-tops-icon");
+                    e && (e.style.backgroundColor = "transparent",
+                        e.style.border = "2px solid rgba(150, 150, 150, 0.5)", e.style.boxShadow = "none", e.style.transform = "scale(1)", (e = x.getElement(e, "svg")) && e.setAttribute("fill", "rgba(100, 100, 100, 0.8)"))
+                });
+                b.appendChild(this.button);
+                const f = x.getElement(b, ".alert-scroll-wrapper") || x.getElement(b, ".domquery-alert-body") || b.querySelector('div[style*="overflow: auto"]') || b;
+                this.scrollListener = () => {
+                    const e = f.scrollTop,
+                        d = f.clientHeight,
+                        l = f.scrollHeight;
+                    l > d ? .1 < e / (l - d) ? (this.button.style.opacity = "1", this.button.style.transform =
+                        "scale(1)") : (this.button.style.opacity = "0", this.button.style.transform = "scale(0.7)") : (this.button.style.opacity = "0", this.button.style.transform = "scale(0.7)")
+                };
+                f.addEventListener("scroll", this.scrollListener, {
+                    passive: !0
+                });
+                this.scrollListener();
+                this.button.addEventListener("click", () => {
+                    f.scrollTo({
+                        top: 0,
+                        behavior: "smooth"
+                    })
+                });
+                this.button.addEventListener("touchend", e => {
+                    e.preventDefault();
+                    f.scrollTo({
+                        top: 0,
+                        behavior: "smooth"
+                    })
+                }, {
+                    passive: !1
+                })
+            },
+            cleanup: function() {
+                const c = x.getElement(b, ".alert-scroll-wrapper") ||
+                    x.getElement(b, ".domquery-alert-body") || b.querySelector('div[style*="overflow: auto"]') || b;
+                this.scrollListener && c.removeEventListener("scroll", this.scrollListener, {
+                    passive: !0
+                });
+                this.button && this.button.parentNode && this.button.parentNode.removeChild(this.button)
+            }
+        }, w.create(), b.topsManager = w);
+        const la = (c, f = !1, e, d = "default") => {
+            if (K && (!f || "function" !== d)) return Promise.resolve();
+            K = !0;
+            v.closingAlerts.add(y);
+            b && (x.clearParentCache(b), x.invalidateDocument(".domquery-alert"));
+            if ("_blank" === a.parent) {
+                1 < Array.from(document.querySelectorAll(".domquery-alert")).length ||
+                    (document.body.style.overflow = "", document.documentElement.style.overflow = "", !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+                        isIOS: !1
+                    }).isIOS && (document.body.style.position = "", document.body.style.width = "", document.body.style.top = "", window.scrollTo(0, parseInt(scrollY || "0"))));
+                try {
+                    const n = a.instanceId;
+                    var l = document.querySelector(`.domquery-shadow-overlay[data-instance-id="${n}"]`);
+                    l && l.parentNode && l.setAttribute("data-related-alert", n);
+                    const N = document.querySelector(`.domquery-blank-iframe[data-instance-id="${n}"]`);
+                    if (N && N.parentNode) {
+                        try {
+                            N.contentWindow && (N.contentWindow._alertInstance = null, N.contentWindow._alertOptions = null, N.contentDocument && (N.contentDocument.body.innerHTML = ""))
+                        } catch (H) {}
+                        N.parentNode.removeChild(N)
+                    }
+                    const U = document.querySelectorAll(".domquery-blank-container");
+                    if (0 < U.length) {
+                        const H = Array.from(U).sort((sa, P) => {
+                            sa = parseInt(window.getComputedStyle(sa).zIndex || 0);
+                            return parseInt(window.getComputedStyle(P).zIndex || 0) - sa
+                        });
+                        0 < H.length && parseInt(window.getComputedStyle(H[0]).zIndex || 0);
+                        let z =
+                            0;
+                        H.forEach(sa => {
+                            const P = sa.getAttribute("data-instance-id");
+                            if (P !== n) {
+                                var S = parseInt(window.getComputedStyle(sa).zIndex || 0);
+                                P && (sa = document.querySelector(`.domquery-shadow-overlay[data-instance-id="${P}"]`)) && (S -= 20, sa.style.zIndex = S.toString(), sa.setAttribute("data-related-container", P), S > z && (z = S))
+                            }
+                        })
+                    }
+                } catch (n) {}
+            }
+            v.observers && v.observers[a.instanceId] && (v.observers[a.instanceId].disconnect(), delete v.observers[a.instanceId]);
+            g.alertScrollHandlers && g.alertScrollHandlers[a.instanceId] && (l = g.alertScrollHandlers[a.instanceId],
+                l.element && l.handler && l.element.removeEventListener("scroll", l.handler), delete g.alertScrollHandlers[a.instanceId]);
+            g.alertScrollStyles && g.alertScrollStyles[a.instanceId] && (document.head.removeChild(g.alertScrollStyles[a.instanceId]), delete g.alertScrollStyles[a.instanceId]);
+            $.AlertScrollManager.isUserScrolling[a.instanceId] && delete $.AlertScrollManager.isUserScrolling[a.instanceId];
+            $.AlertScrollManager.lastScrollTime[a.instanceId] && delete $.AlertScrollManager.lastScrollTime[a.instanceId];
+            $.AlertScrollManager.scrollStates[a.instanceId] &&
+                delete $.AlertScrollManager.scrollStates[a.instanceId];
+            void 0 !== a.autoscroll && ($.AlertScrollManager.savePosition(a.id || "default-scroll-position", b), b.scrollListener && b.scrollElements && (b.scrollElements.forEach(n => {
+                n.removeEventListener("scroll", b.scrollListener)
+            }), delete b.scrollListener, delete b.scrollElements));
+            try {
+                a.instanceId && document.querySelectorAll(`.virtual-input-layer[data-alert-id="${a.instanceId}"]`).forEach(n => {
+                    n && n.parentNode && n.parentNode.removeChild(n)
+                });
+                var u = document.querySelectorAll(".virtual-input-layer");
+                0 < u.length && u.forEach(n => {
+                    n && n.parentNode && n.parentNode.removeChild(n)
+                });
+                Array.from(document.body.children).forEach(n => {
+                    n.className && n.className.includes("virtual-input-layer") && document.body.removeChild(n)
+                })
+            } catch (n) {}
+            b.timeoutId && (clearTimeout(b.timeoutId), b.timeoutId = null);
+            if (u = b.querySelector(".domquery-alert-loading")) u.style.display = "none";
+            const k = e || a && a._closeSpeed || p;
+            return new Promise(n => {
+                let N = !1,
+                    U = !1;
+                if (!f && c && a.text && "function" === typeof a.function) {
+                    var H = Array.from(b.querySelectorAll("input, textarea, select"));
+                    const Q = [],
+                        R = {},
+                        I = new Set,
+                        ca = new Map,
+                        pa = new Map;
+                    H.forEach(B => {
+                        var ea = B.type;
+                        "checkbox" === ea ? (ea = B.name || "checkbox", ca.has(ea) || ca.set(ea, []), B.checked && ca.get(ea).push(B.value || "true")) : "radio" === ea && B.checked && (ea = B.name || "radio", pa.has(ea) || pa.set(ea, B.value || "true"))
+                    });
+                    H.forEach(B => {
+                        const ea = B.type;
+                        var O = B.tagName.toLowerCase();
+                        if ("checkbox" === ea) B = B.name || "checkbox", O = `checkbox_${B}`, I.has(O) || (B = ca.get(B) || [], 0 < B.length && (Q.push(B), R.checkbox = B), I.add(O));
+                        else if ("radio" === ea) {
+                            if (B = B.name || "radio",
+                                O = `radio_${B}`, !I.has(O)) {
+                                if (B = pa.get(B)) Q.push(B), R.radio = B;
+                                I.add(O)
+                            }
+                        } else "select" === O ? Q.push(B.value) : (B = B.value.replace(/[`'"]/g, ""), B = Q.push(B) - 1, "textarea" === O && (R.textarea = B))
+                    });
+                    for (var z in R) Q[z] = "textarea" === z && "number" === typeof R[z] ? Q[R[z]] : R[z];
+                    this.totalResults || (this.totalResults = []);
+                    const V = createAlertContext(c, this.totalResults, "function");
+                    V._closeWasCalled = !1;
+                    H = g.$closeAlert;
+                    let X;
+                    if ("_self" === a.parent || "_blank" === a.parent) X = () => {
+                        V._closeWasCalled = !0;
+                        L.setTimeoutRAF(() => {
+                            const B = x.getElement(b,
+                                ".domquery-close-x-btn") || x.getElement(b, ".domquery-alert-close-btn");
+                            if (B) B.click();
+                            else try {
+                                la("xclose", !0, 0, "force_close")
+                            } catch (ea) {}
+                        }, 0);
+                        return !0
+                    }, g.$closeAlert = function(...B) {
+                        return X()
+                    };
+                    V._functionCallbackExecuting = !0;
+                    a.function.call(V, Q);
+                    V._functionCallbackExecuting = !1;
+                    g.$closeAlert = H;
+                    if (V._closeWasCalled) return la(V._closeTypeParam || "close", !0, 0, "function");
+                    K = !1;
+                    v.closingAlerts.delete(y);
+                    return Promise.resolve()
+                }
+                const sa = a.toast ? ".domquery-toast-overlay" : ".domquery-shadow-overlay",
+                    P = `${sa}[data-instance-id="${a.instanceId}"]`,
+                    S = "TC LC RC BC TL TR BL BR".split(" ").find(Q => void 0 !== a[Q]),
+                    na = S && !1 === a[S];
+                let ja;
+                if (a.easing) {
+                    const [Q, R] = a.easing.split(",").map(I => I.trim());
+                    ja = R || Q
+                }
+                const fa = performance.now(),
+                    Ja = () => {
+                        const Q = document.createElement("div");
+                        Q.style.position = "fixed";
+                        Q.style.zIndex = a.zindex;
+                        const R = b.offsetWidth,
+                            I = b.offsetHeight;
+                        Q.style.width = R + "px";
+                        Q.style.height = I + "px";
+                        Q.style.left = "50%";
+                        Q.style.top = "50%";
+                        Q.style.transform = "translate(-50%, -50%)";
+                        Q.style.pointerEvents = "none";
+                        const ca = b.parentNode;
+                        ca && ca.insertBefore(Q,
+                            b);
+                        Q.appendChild(b);
+                        b.style.position = "relative";
+                        b.style.left = "50%";
+                        b.style.top = "50%";
+                        b.style.width = R + "px";
+                        b.style.height = I + "px";
+                        return Q
+                    };
+                Z && (document.body.style.overflow = "", document.documentElement.style.overflow = "", document.removeEventListener("touchmove", F));
+                if (!0 === a.fastMode) {
+                    H = document.querySelector(`${sa}[data-instance-id="${y}"]`);
+                    if (a.easing) {
+                        const [R, I] = a.easing.split(",").map(ca => ca.trim());
+                        z = I || R
+                    } else z = "ease-out";
+                    const Q = function(R) {
+                        switch (R) {
+                            case "linear":
+                                return "linear";
+                            case "easeOutQuint":
+                                return "cubic-bezier(0.22, 1, 0.36, 1)";
+                            case "easeInOutQuint":
+                                return "cubic-bezier(0.83, 0, 0.17, 1)";
+                            case "easeInQuint":
+                                return "cubic-bezier(0.64, 0, 0.78, 0)";
+                            default:
+                                return "ease-out"
+                        }
+                    }(z);
+                    !0 === a.hide && b.querySelectorAll(".domquery-alert-body, .domquery-text-container, .domquery-text-bottom-container, .domquery-alert-close-btn, .alert-scroll-wrapper > div").forEach(R => {
+                        R && (R.style.transition = `opacity ${k/2}ms ${Q}`, R.style.opacity = "0")
+                    });
+                    H && (H.style.transition = `opacity ${k}ms ${Q}`, H.style.opacity = "0");
+                    H = void 0 !== a.CC;
+                    if (na)
+                        if (["TL", "TR",
+                                "BL", "BR"
+                            ].includes(S)) {
+                            z = S.endsWith("L") ? "left" : "right";
+                            var Ca = S.startsWith("T") ? "top" : "bottom";
+                            z = `translate(${"right"===z?100:-100}%, ${"bottom"===Ca?100:-100}%)`
+                        } else z = ["LC", "RC"].includes(S) ? `translate(${"LC"===S?-100:100}%, -50%)` : ["TC", "BC"].includes(S) ? `translate(-50%, ${"TC"===S?-100:100}%)` : H ? "translate(-50%, -50%) scale(0.8)" : "scale(0.8)";
+                    else z = H ? "translate(-50%, -50%) scale(0.8)" : "scale(0.8)";
+                    b.style.willChange = "transform, opacity";
+                    b.style.backfaceVisibility = "hidden";
+                    if (z.includes("scale")) {
+                        Ca =
+                            "center center";
+                        if (S && !na)
+                            if ("BL" === S) Ca = "left bottom";
+                            else if ("BR" === S) Ca = "right bottom";
+                        else if ("TL" === S) Ca = "left top";
+                        else if ("TR" === S) Ca = "right top";
+                        else if ("TC" === S) Ca = "center top";
+                        else if ("BC" === S) Ca = "center bottom";
+                        else if ("LC" === S) Ca = "left center";
+                        else if ("RC" === S) Ca = "right center";
+                        else if ("CC" === S || H) Ca = "center center";
+                        b.style.transformOrigin = Ca
+                    }
+                    H = z;
+                    z.includes("translate") && !z.includes("translate3d") && (H = z.replace(/translate\(([^)]+)\)/g, "translate3d($1, 0)"));
+                    b.style.transition = `transform ${k}ms ${Q}, opacity ${k}ms ${Q}`;
+                    b.style.opacity = "0";
+                    b.style.transform = H;
+                    L.setTimeoutRAF(() => {
+                        b.style.willChange && (b.style.willChange = "auto", b.style.backfaceVisibility = "");
+                        K = !1;
+                        b._elementInfos && b._elementInfos.forEach(I => {
+                            I.element && (I.element.style.display = "none" === I.originalDisplay ? "none" : I.originalDisplay, I.parent && (I.nextSibling ? I.parent.insertBefore(I.element, I.nextSibling) : I.parent.appendChild(I.element)))
+                        });
+                        b.wrapper && b.wrapper.parentNode && b.wrapper.parentNode.removeChild(b.wrapper);
+                        var R = C.querySelector(P);
+                        R && R.remove();
+                        "_blank" === a.parent ? [`.domquery-shadow-overlay[data-connected-alert="${a.instanceId}"]`, `.domquery-shadow-overlay[data-related-alert="${a.instanceId}"]`, `.domquery-shadow-overlay[data-instance-id="${a.instanceId}"]`, `.domquery-blank-overlay[data-instance-id="${a.instanceId}"]`, `.domquery-blank-overlay[data-connected-alert="${a.instanceId}"]`].forEach(I => {
+                            document.querySelectorAll(I).forEach(ca => {
+                                ca && ca.parentNode && ca.remove()
+                            })
+                        }) : (R = document.querySelector(P)) && R.remove();
+                        if ("_blank" === a.parent && (document.querySelectorAll(`.domquery-alert[data-parent-instance-id="${y}"]`).forEach(I => {
+                                const ca = I.getAttribute("data-instance-id");
+                                if (ca && g.$closeAlert) try {
+                                    const pa = I.querySelector(".domquery-close-x-btn") || I.querySelector(".domquery-alert-close-btn");
+                                    if (pa) pa.click();
+                                    else {
+                                        I.parentNode && I.parentNode.removeChild(I);
+                                        const V = document.querySelector(`.domquery-shadow-overlay[data-instance-id="${ca}"]`);
+                                        V && V.parentNode && V.parentNode.removeChild(V)
+                                    }
+                                } catch (pa) {
+                                    I.parentNode && I.parentNode.removeChild(I)
+                                }
+                            }), (R = document.getElementById("domquery-blank-container-" + y)) && R.parentNode)) {
+                            const I = R.querySelector(".domquery-blank-iframe");
+                            if (I) try {
+                                I.contentWindow && (I.contentWindow._alertInstance = null, I.contentWindow._alertOptions = null, I.contentDocument && (I.contentDocument.body.innerHTML = ""))
+                            } catch (ca) {}
+                            R.parentNode.removeChild(R)
+                        }
+                        a.toast || !1 === a.History || (U = !0);
+                        R = "true" === b.getAttribute("data-offout");
+                        C !== document.body && void 0 !== C._originalOverflow && (C.style.overflow = C._originalOverflow, delete C._originalOverflow);
+                        b && b.parentNode && b.parentNode.removeChild(b);
+                        0 === document.querySelectorAll(".domquery-alert").length ? (b.wheelListener &&
+                                (document.removeEventListener("wheel", b.wheelListener, {
+                                    passive: !1
+                                }), delete b.wheelListener), !1 === a.retainScroll ? (document.body.style.overflow = "", document.documentElement.style.overflow = "", void 0 !== document.body._originalOverflowX && (document.body.style.overflowX = document.body._originalOverflowX, document.documentElement.style.overflowX = document.documentElement._originalOverflowX, delete document.body._originalOverflowX, delete document.documentElement._originalOverflowX)) : R && a.History || (document.body.style.overflow =
+                                    "", document.documentElement.style.overflow = "", void 0 !== document.body._originalOverflowX && (document.body.style.overflowX = document.body._originalOverflowX, document.documentElement.style.overflowX = document.documentElement._originalOverflowX, delete document.body._originalOverflowX, delete document.documentElement._originalOverflowX), !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+                                        isIOS: !1
+                                    }).isIOS && (document.body.style.position = "", document.body.style.width = "", document.body.style.top = ""))) : b.wheelListener &&
+                            (document.removeEventListener("wheel", b.wheelListener, {
+                                passive: !1
+                            }), delete b.wheelListener);
+                        a.onClose && "function" === typeof a.onClose && (R = createAlertContext(c, this.totalResults, d), a.onClose.call(R), 1 >= document.querySelectorAll(".domquery-alert").length && !1 !== a.retainScroll && (document.body.style.overflow = "", document.documentElement.style.overflow = ""));
+                        N || null === c || "function" !== typeof h || (N = !0, setTimeout(() => {
+                            v.callbackExecuting = !0;
+                            try {
+                                h(c, d)
+                            } finally {
+                                v.callbackExecuting = !1
+                            }
+                        }, 0));
+                        U && !a.toast && !1 !== a.History ?
+                            (R = !0 === a.closeBack ? void 0 : 0, domquery(window).historyOff("alert_" + y, function() {
+                                v.closingAlerts.delete(y);
+                                !0 !== a.closeBack && ("number" === typeof a.retainScroll ? D(C, a.retainScroll) : 0 === document.querySelectorAll(".domquery-alert").length && (document.body.style.overflow = "", document.documentElement.style.overflow = ""));
+                                U && n()
+                            }, R)) : v.closingAlerts.delete(y);
+                        a.History && !a.toast && (R = "overlay_" + y, domquery(window).historyOff(R));
+                        U || n()
+                    }, k + 20)
+                } else {
+                    const Q = function(R) {
+                        const I = document.querySelector(`${sa}[data-instance-id="${y}"]`),
+                            ca = I ? parseFloat(g.getComputedStyle(I).opacity) : 0,
+                            pa = "number" === typeof a.opacity ? a.opacity : 1;
+                        let V;
+                        if (a.easing) {
+                            const [X, B] = a.easing.split(",").map(ea => ea.trim());
+                            V = B || X
+                        }!0 === a.hide && b.querySelectorAll(".domquery-alert-body, .domquery-text-container, .domquery-text-bottom-container, .domquery-alert-close-btn, .alert-scroll-wrapper > div").forEach(X => {
+                            X && (X.style.transition = "opacity 0.3s ease", X.style.opacity = "1")
+                        });
+                        return function(X) {
+                            var B = X - fa;
+                            X = Math.min(B / k, 1);
+                            if (!0 === a.hide) {
+                                var ea = b.querySelectorAll(".domquery-alert-body, .domquery-text-container, .domquery-text-bottom-container, .domquery-alert-close-btn, .alert-scroll-wrapper > div");
+                                const E = Math.max(0, 1 - 2 * X);
+                                ea.forEach(W => {
+                                    W && (W.style.opacity = E.toString())
+                                })
+                            }
+                            if (na)
+                                if (ea = $._anieasing(0, 1, X, V), ["TL", "TR", "BL", "BR"].includes(S)) {
+                                    var O = S.endsWith("L") ? "left" : "right";
+                                    var ba = S.startsWith("T") ? "top" : "bottom";
+                                    O = "right" === O ? 100 : -100;
+                                    ba = "bottom" === ba ? 100 : -100;
+                                    if (1 > B) O = null;
+                                    else {
+                                        var Fa = $._anieasing(0, 1, Math.min((B - 1) / k, 1), V);
+                                        O = `translate3d(${O*Fa}%, ${ba*Fa}%, 0)`
+                                    }
+                                    null !== O && 1 <= B && (1 <= B && !b._willChangeApplied && (b.style.willChange = "transform, opacity", b.style.backfaceVisibility = "hidden",
+                                        b._willChangeApplied = !0), b.style.transform = O);
+                                    b.style.opacity = 1 - (1 - pa) * ea
+                                } else ["LC", "RC"].includes(S) ? (O = "LC" === S ? -100 : 100, 1 > B ? O = null : (ba = $._anieasing(0, 1, Math.min((B - 1) / k, 1), V), O = `translate3d(${O*ba}%, -50%, 0)`), null !== O && 1 <= B && (1 <= B && !b._willChangeApplied && (b.style.willChange = "transform, opacity", b.style.backfaceVisibility = "hidden", b._willChangeApplied = !0), b.style.transform = O), b.style.opacity = 1 - (1 - pa) * ea) : ["TC", "BC"].includes(S) && (O = "TC" === S ? -100 : 100, 1 > B ? O = null : (ba = $._anieasing(0, 1, Math.min((B -
+                                    1) / k, 1), V), O = `translate3d(-50%, ${O*ba}%, 0)`), null !== O && 1 <= B && (1 <= B && !b._willChangeApplied && (b.style.willChange = "transform, opacity", b.style.backfaceVisibility = "hidden", b._willChangeApplied = !0), b.style.transform = O), b.style.opacity = 1 - (1 - pa) * ea);
+                            else if (za && r)
+                                if ("boxcenter" == ja) 1 > B || (B = $._anieasing(0, 1, Math.min((B - 1) / k, 1), V), b._willChangeApplied || (b.style.willChange = "transform, opacity", b.style.backfaceVisibility = "hidden", b.style.transformOrigin = "center center", b._willChangeApplied = !0), b.style.transform =
+                                    `translate3d(-50%, -50%, 0) scale(${1-B})`, b.style.opacity = Math.max(0, 1 - B));
+                                else {
+                                    B = $._anieasing(0, 1, X, V);
+                                    ea = null;
+                                    if ("_self" === a.parent)
+                                        for (O = Array.from(document.querySelectorAll(".domquery-alert")), ba = O.length - 1; 0 <= ba; ba--)
+                                            if (O[ba].getAttribute("data-instance-id") !== a.instanceId) {
+                                                ea = O[ba];
+                                                break
+                                            } O = r.clientX;
+                                    ba = r.clientY;
+                                    if (ea) {
+                                        var J = ea.getBoundingClientRect();
+                                        O = r.clientX - J.left;
+                                        ba = r.clientY - J.top;
+                                        Fa = J.width / 2;
+                                        J = J.height / 2
+                                    } else Fa = g.innerWidth / 2, J = g.innerHeight / 2;
+                                    b.wrapper || (b.wrapper = Ja());
+                                    b.wrapper.style.position =
+                                        ea ? "absolute" : "fixed";
+                                    b.wrapper.style.left = `${O+(Fa-O)*(1-B)}px`;
+                                    b.wrapper.style.top = `${ba+(J-ba)*(1-B)}px`;
+                                    b.style.transition = "none";
+                                    b._willChangeApplied || (b.style.willChange = "transform, opacity", b.style.backfaceVisibility = "hidden", b.style.transformOrigin = "center center", b._willChangeApplied = !0);
+                                    b.style.transform = `translate3d(-50%, -50%, 0) scale(${1-B})`;
+                                    b.style.opacity = 1 - (1 - pa) * B
+                                }
+                            else {
+                                ea = $._anieasing(0, 1, X, V);
+                                if (1 > B) O = null;
+                                else {
+                                    O = 1 - $._anieasing(0, 1, Math.min((B - 1) / k, 1), V);
+                                    if (!b._willChangeApplied) {
+                                        b.style.willChange =
+                                            "transform, opacity";
+                                        b.style.backfaceVisibility = "hidden";
+                                        ba = "center center";
+                                        if (S && !na)
+                                            if ("BL" === S) ba = "left bottom";
+                                            else if ("BR" === S) ba = "right bottom";
+                                        else if ("TL" === S) ba = "left top";
+                                        else if ("TR" === S) ba = "right top";
+                                        else if ("TC" === S) ba = "center top";
+                                        else if ("BC" === S) ba = "center bottom";
+                                        else if ("LC" === S) ba = "left center";
+                                        else if ("RC" === S) ba = "right center";
+                                        else if ("CC" === S || void 0 !== a.CC) ba = "center center";
+                                        b.style.transformOrigin = ba;
+                                        b._willChangeApplied = !0
+                                    }
+                                    void 0 !== a.CC ? O = `translate3d(-50%, -50%, 0) scale(${O})` :
+                                        Da && Da.finalTransform ? (ba = Da.finalTransform, ba = ba.replace(/translate\(-50%,\s*-50%\)/g, "translate3d(-50%, -50%, 0)"), ba = ba.replace(/translate\(([^)]+)\)/g, "translate3d($1, 0)"), O = ba.replace("scale(1)", `scale(${O})`)) : O = `scale(${O})`
+                                }
+                                null !== O && 1 <= B && (b.style.transform = O);
+                                b.style.opacity = 1 - (1 - pa) * ea
+                            }
+                            I && (I.style.opacity = ca * (1 - X));
+                            if (1 > X) requestAnimationFrame(Q);
+                            else {
+                                b._willChangeApplied && (b.style.willChange = "auto", b.style.backfaceVisibility = "", delete b._willChangeApplied);
+                                K = !1;
+                                U && !a.toast && !1 !== a.History ?
+                                    (X = !0 === a.closeBack ? void 0 : 0, domquery(window).historyOff("alert_" + y, function() {
+                                        v.closingAlerts.delete(y);
+                                        !0 !== a.closeBack && ("number" === typeof a.retainScroll ? D(C, a.retainScroll) : 0 === document.querySelectorAll(".domquery-alert").length && (document.body.style.overflow = "", document.documentElement.style.overflow = ""));
+                                        U && n()
+                                    }, X)) : v.closingAlerts.delete(y);
+                                X = "true" === b.getAttribute("data-offout");
+                                C !== document.body && void 0 !== C._originalOverflow && (C.style.overflow = C._originalOverflow, delete C._originalOverflow);
+                                b && b.parentNode && b.parentNode.removeChild(b);
+                                0 === document.querySelectorAll(".domquery-alert").length ? (b.wheelListener && (document.removeEventListener("wheel", b.wheelListener, {
+                                    passive: !1
+                                }), delete b.wheelListener), !1 === a.retainScroll ? (document.body.style.overflow = "", document.documentElement.style.overflow = "") : X && a.History || (document.body.style.overflow = "", document.documentElement.style.overflow = "", !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+                                    isIOS: !1
+                                }).isIOS && (document.body.style.position =
+                                    "", document.body.style.width = "", document.body.style.top = "", window.scrollTo(0, parseInt(scrollY || "0"))))) : b.wheelListener && (document.removeEventListener("wheel", b.wheelListener, {
+                                    passive: !1
+                                }), delete b.wheelListener);
+                                b._elementInfos && b._elementInfos.forEach(E => {
+                                    E.element && E.parent && (E.element.style.display = "none" === E.originalDisplay ? "none" : E.originalDisplay, E.nextSibling ? E.parent.insertBefore(E.element, E.nextSibling) : E.parent.appendChild(E.element))
+                                });
+                                b.wrapper && b.wrapper.parentNode && b.wrapper.parentNode.removeChild(b.wrapper);
+                                (X = C.querySelector(P)) && X.remove();
+                                "_blank" === a.parent ? [`.domquery-shadow-overlay[data-connected-alert="${a.instanceId}"]`, `.domquery-shadow-overlay[data-related-alert="${a.instanceId}"]`, `.domquery-shadow-overlay[data-instance-id="${a.instanceId}"]`, `.domquery-blank-overlay[data-instance-id="${a.instanceId}"]`, `.domquery-blank-overlay[data-connected-alert="${a.instanceId}"]`].forEach(E => {
+                                    document.querySelectorAll(E).forEach(W => {
+                                        W && W.parentNode && W.remove()
+                                    })
+                                }) : (X = document.querySelector(P)) && X.remove();
+                                if ("_blank" === a.parent) {
+                                    document.querySelectorAll(`.domquery-alert[data-parent-instance-id="${y}"]`).forEach(E => {
+                                        const W = E.getAttribute("data-instance-id");
+                                        if (W && g.$closeAlert) try {
+                                            const va = E.querySelector(".domquery-close-x-btn") || E.querySelector(".domquery-alert-close-btn");
+                                            if (va) va.click();
+                                            else {
+                                                E.parentNode && E.parentNode.removeChild(E);
+                                                const oa = document.querySelector(`.domquery-shadow-overlay[data-instance-id="${W}"]`);
+                                                oa && oa.parentNode && oa.parentNode.removeChild(oa)
+                                            }
+                                        } catch (va) {
+                                            E.parentNode && E.parentNode.removeChild(E)
+                                        }
+                                    });
+                                    if (X = document.getElementById("domquery-blank-container-" + y)) {
+                                        if (B = X.querySelector(".domquery-blank-iframe")) try {
+                                            B.contentWindow && (B.contentWindow._alertInstance = null, B.contentWindow._alertOptions = null, B.contentDocument && (B.contentDocument.body.innerHTML = ""))
+                                        } catch (E) {}
+                                        X.parentNode && X.parentNode.removeChild(X)
+                                    } [`.domquery-shadow-overlay[data-connected-alert="${y}"]`, `.domquery-shadow-overlay[data-related-alert="${y}"]`, `.domquery-shadow-overlay[data-instance-id="${y}"]`, `.domquery-blank-overlay[data-instance-id="${y}"]`,
+                                        `.domquery-blank-overlay[data-connected-alert="${y}"]`
+                                    ].forEach(E => {
+                                        document.querySelectorAll(E).forEach(W => {
+                                            W && W.parentNode && W.remove()
+                                        })
+                                    });
+                                    X = document.querySelectorAll(".domquery-blank-container");
+                                    B = document.querySelectorAll(".domquery-alert");
+                                    if (0 === X.length && 1 >= B.length) document.body.style.overflow = "", document.documentElement.style.overflow = "", !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+                                        isIOS: !1
+                                    }).isIOS && (document.body.style.position = "", document.body.style.width = "", document.body.style.top =
+                                        "", window.scrollTo(0, parseInt(scrollY || "0")));
+                                    else {
+                                        const E = document.querySelectorAll(".domquery-alert");
+                                        E.forEach(W => {
+                                            var va = W.getAttribute("data-instance-id");
+                                            if (va) {
+                                                let oa = 9999;
+                                                E.forEach(ua => {
+                                                    ua !== W && (ua = parseInt(window.getComputedStyle(ua).zIndex || 0), ua > oa && (oa = ua))
+                                                });
+                                                const qa = oa + 2;
+                                                W.style.zIndex = qa.toString();
+                                                const ta = document.querySelector(`.domquery-shadow-overlay[data-connected-alert="${va}"]`) || document.querySelector(`.domquery-blank-overlay[data-instance-id="${va}"]`) || document.querySelector(`.domquery-shadow-overlay[data-instance-id="${va}"]`);
+                                                ta && (ta.style.zIndex = (qa - 1).toString());
+                                                if (va = document.getElementById("domquery-blank-container-" + va)) va.style.zIndex = (qa - 2).toString()
+                                            }
+                                        })
+                                    }
+                                }
+                                a.toast || !1 === a.History || (U = !0);
+                                C !== document.body && void 0 !== C._originalOverflow && (C.style.overflow = C._originalOverflow, delete C._originalOverflow);
+                                b && b.parentNode && b.parentNode.removeChild(b);
+                                0 === document.querySelectorAll(".domquery-alert").length && !0 !== a.closeBack && (!1 === a.retainScroll ? (document.body.style.overflow = "", document.documentElement.style.overflow =
+                                    "") : (document.body.style.overflow = "", document.documentElement.style.overflow = "", !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+                                    isIOS: !1
+                                }).isIOS && (document.body.style.position = "", document.body.style.width = "", document.body.style.top = "", b._scrollPosition && void 0 !== b._scrollPosition.y && window.scrollTo(0, b._scrollPosition.y))));
+                                "swipe" === R && v.options[y]?.swipeCallback && "function" === typeof v.options[y].swipeCallback && v.options[y].swipeCallback({
+                                    direction: c,
+                                    velocity: xa || 0,
+                                    timeElapsed: da || 0,
+                                    instanceId: y,
+                                    phase: "complete"
+                                });
+                                a.onClose && "function" === typeof a.onClose && (X = createAlertContext(c, this.totalResults, R), a.onClose.call(X), 1 >= document.querySelectorAll(".domquery-alert").length && !1 !== a.retainScroll && (document.body.style.overflow = "", document.documentElement.style.overflow = ""));
+                                N || null === c || "function" !== typeof h || (N = !0, setTimeout(() => {
+                                    v.callbackExecuting = !0;
+                                    try {
+                                        h(c, R)
+                                    } finally {
+                                        v.callbackExecuting = !1
+                                    }
+                                }, 0));
+                                U && !a.toast && !1 !== a.History ? (X = !0 === a.closeBack ? void 0 : 0, domquery(window).historyOff("alert_" +
+                                    y,
+                                    function() {
+                                        v.closingAlerts.delete(y);
+                                        !0 !== a.closeBack && ("number" === typeof a.retainScroll ? D(C, a.retainScroll) : 0 === document.querySelectorAll(".domquery-alert").length && (document.body.style.overflow = "", document.documentElement.style.overflow = ""));
+                                        U && n()
+                                    }, X)) : v.closingAlerts.delete(y);
+                                a.History && !a.toast && (X = "overlay_" + y, domquery(window).historyOff(X), 0 === document.querySelectorAll(".domquery-shadow-overlay, .domquery-blank-overlay").length && v.bodyHistoryRegistered && (domquery(window).historyOff("alert_body_history"),
+                                    v.bodyHistoryRegistered = !1));
+                                U || n()
+                            }
+                        }
+                    }(d);
+                    requestAnimationFrame(Q)
+                }
+            })
+        };
+        if (a.closeBack) {
+            if (a.History && !a.toast) {
+                const c = a.id && null !== a.id ? "alert_" + a.id : "alert_" + y;
+                domquery(window).historyOn(c, function(f) {
+                        if (0 === f)
+                            if (0 < v.closingAlerts.size) domquery(window).historyOn(c, function() {}, !1);
+                            else {
+                                var e = Array.from(document.querySelectorAll(".domquery-alert")),
+                                    d = l => (l = l.match(/\d+/)) ? parseInt(l[0]) : 0;
+                                f = d(y);
+                                e = Math.max(...e.map(l => d(l.getAttribute("data-instance-id"))));
+                                f === e && la("back", !0, void 0, "closeBack")
+                            }
+                    },
+                    !1, null, {})
+            }
+        } else if (a.History && !a.toast) {
+            const c = a.id && null !== a.id ? "alert_" + a.id : "alert_" + y;
+            domquery(window).historyOn(c, function(f) {
+                b.setAttribute("data-offout", "true")
+            }, !0, function(f) {
+                if (0 < v.closingAlerts.size) domquery(window).historyOn(c, function() {}, !1);
+                else {
+                    var e = Array.from(document.querySelectorAll(".domquery-alert")),
+                        d = l => (l = l.match(/\d+/)) ? parseInt(l[0]) : 0;
+                    f = d(y);
+                    e = Math.max(...e.map(l => d(l.getAttribute("data-instance-id"))));
+                    f === e && la("back", !0, void 0, "back")
+                }
+            }, {})
+        }
+        "_self" !== a.parent && document.body.appendChild(b);
+        a.toast && (b.style.cssText += "overflow: hidden !important;", w = x.getElement(b, ".domquery-alert-body")) && (w.style.cssText += "overflow: hidden !important; text-overflow: ellipsis !important;");
+        (w = document.querySelector(`.domquery-shadow-overlay[data-instance-id="${a.instanceId}"]`)) && w.parentNode && w.parentNode.removeChild(w);
+        a.timeOut && "number" === typeof a.timeOut && 0 < a.timeOut && (b.timeoutId = L.setTimeoutRAF(() => {
+            K || la("timeout", !0, void 0, "timeout")
+        }, a.timeOut));
+        if (C !== document.body || "_self" === a.parent || !a.parent &&
+            C === document.body)
+            if (C !== document.body && (b.style.position = "absolute", b.style.maxWidth = a.maxWidth ? processSize(a.maxWidth) : "100%", b.style.minWidth = a.minWidth ? processSize(a.minWidth) : "", b.style.maxHeight = a.maxHeight ? processSize(a.maxHeight) : "100%"), "_blank" === a.parent && b.style.setProperty("z-index", (a.zindex || 2147483647).toString(), "important"), "_self" === a.parent || !a.parent && C === document.body) b.style.position = "fixed", a.zindex && (b.style.zIndex = a.zindex.toString()), "TC LC RC BC TL TR BL BR".split(" ").some(c =>
+                void 0 !== a[c]) && void 0 === a.CC ? void 0 !== a.TC ? (b.style.left = "50%", b.style.top = "0", b.style.transform = "translateX(-50%)") : void 0 !== a.BC ? (b.style.left = "50%", b.style.bottom = "0", b.style.transform = "translateX(-50%)") : void 0 !== a.LC ? (b.style.left = "0", b.style.top = "50%", b.style.transform = "translateY(-50%)") : void 0 !== a.RC ? (b.style.right = "0", b.style.top = "50%", b.style.transform = "translateY(-50%)") : void 0 !== a.TL ? (b.style.left = "0", b.style.top = "0", b.style.transform = "none") : void 0 !== a.TR ? (b.style.right = "0", b.style.top =
+                "0", b.style.transform = "none") : void 0 !== a.BL ? (b.style.left = "0", b.style.bottom = "0", b.style.transform = "none") : void 0 !== a.BR && (b.style.right = "0", b.style.bottom = "0", b.style.transform = "none") : (b.style.left = "50%", b.style.top = "50%", b.style.transform = "translate(-50%, -50%)"), a.width && (b.style.width = a.width), a.height && (b.style.height = a.height), b.style.maxWidth = "100%", b.style.maxHeight = a.maxHeight ? processSize(a.maxHeight) : "100%";
+        C !== document.body && !1 === a.BC && a.parent && "_self" !== a.parent && "_blank" !== a.parent &&
+            (C._originalOverflow || (C._originalOverflow = getComputedStyle(C).overflow), C.style.overflow = "hidden");
+        C.appendChild(b);
+        if (!1 !== a.background) {
+            w = "_blank" === a.parent ? document.body : "_self" === a.parent ? b : a.parent || "body";
+            if ("_blank" === a.parent) {
+                a.overlayZindex || (a.overlayZindex = (a.zindex || 2147483647) - 1);
+                let c = null,
+                    f = 0;
+                document.querySelectorAll(".domquery-alert").forEach(e => {
+                    if (e.getAttribute("data-instance-id") !== a.instanceId) {
+                        const d = parseInt(window.getComputedStyle(e).zIndex || 0);
+                        d > f && (f = d, c = e)
+                    }
+                });
+                c && (a._parentAlert =
+                    c)
+            }
+            $.shadow(w, {
+                bgcolor: a.background,
+                alpha: a.alpha,
+                zindex: a.overlayZindex || (a.toast ? a.toastZindex - 10 : a.zindex - 10),
+                close: !1,
+                overlayType: a.toast ? "toast" : "alert",
+                instanceId: a.instanceId,
+                parent: a.parent,
+                preserveExisting: a.toast
+            }, p);
+            "_blank" === a.parent && (w = document.querySelector(`.domquery-shadow-overlay[data-instance-id="${a.instanceId}"]`)) && (w.style.zIndex = a.overlayZindex, w.style.position = "fixed", w.style.top = "0", w.style.left = "0", w.style.width = "100%", w.style.height = "100%", "_blank" === a.parent && (w.setAttribute("data-blank-container",
+                "domquery-blank-container-" + a.instanceId), w.style.pointerEvents = !0 === a.close ? "auto" : "none", b.classList.add("domquery-blank-alert"), b.style.zIndex = a.zindex.toString(), w.classList.add("domquery-blank-overlay"), w.setAttribute("data-connected-alert", a.instanceId), b.setAttribute("data-connected-overlay", w.getAttribute("data-instance-id") || "")), w.style.pointerEvents = "auto", w.style.backgroundColor = "rgba(0, 0, 0, 0.5)")
+        }
+        w = `.domquery-${a.toast?"toast":"shadow"}-overlay[data-instance-id="${a.instanceId}"]`;
+        const ma = "_blank" === a.parent ? document.querySelector(w) : C.querySelector(w);
+        if ("_blank" === a.parent && b && ma) {
+            b.classList.add("domquery-blank-alert");
+            ma.classList.add("domquery-blank-overlay");
+            let c = 0;
+            document.querySelectorAll(".domquery-blank-alert").forEach(f => {
+                f !== b && (f = parseInt(window.getComputedStyle(f).zIndex || 0), f > c && (c = f))
+            });
+            w = 0 < c ? c + 2 : parseInt(b.style.zIndex || a.zindex || 0);
+            b.style.zIndex = w.toString();
+            ma.style.zIndex = (w - 1).toString();
+            ma.setAttribute("data-connected-alert", a.instanceId);
+            b.setAttribute("data-connected-overlay",
+                ma.getAttribute("data-instance-id") || "");
+            ma.style.pointerEvents = "auto";
+            ma.style.backgroundColor || (ma.style.backgroundColor = "rgba(0, 0, 0, 0.5)");
+            document.querySelectorAll(".domquery-blank-alert").forEach(f => {
+                if (f !== b) {
+                    var e = f.getAttribute("data-instance-id"),
+                        d = f.getAttribute("data-connected-overlay");
+                    e && (d = document.querySelector(`.domquery-blank-overlay[data-instance-id="${d}"]`)) && (e = parseInt(window.getComputedStyle(f).zIndex || 0), d = parseInt(window.getComputedStyle(d).zIndex || 0), e <= d && (f.style.zIndex =
+                        (d + 1).toString()))
+                }
+            })
+        }
+        if (ma) {
+            ma.style.pointerEvents = "auto";
+            ma.style.backgroundColor || (ma.style.backgroundColor = "rgba(0, 0, 0, 0.5)");
+            if (a.History && !a.toast) {
+                w = "overlay_" + y;
+                let c = null;
+                const f = parseInt(window.getComputedStyle(ma).zIndex || 0);
+                let e = 0;
+                document.querySelectorAll(".domquery-shadow-overlay, .domquery-blank-overlay").forEach(d => {
+                    if (d !== ma) {
+                        const l = parseInt(window.getComputedStyle(d).zIndex || 0);
+                        l < f && l > e && (e = l, c = d.getAttribute("data-instance-id"))
+                    }
+                });
+                A = {};
+                if (c) A.target = "overlay_" + c;
+                else if (!v.bodyHistoryRegistered) {
+                    A.target =
+                        "alert_body_history";
+                    domquery(window).historyOn("alert_body_history", function(l) {}, !1, function(l) {
+                        l = document.querySelectorAll(".domquery-shadow-overlay, .domquery-blank-overlay");
+                        const u = 0 < v.closingAlerts.size;
+                        0 < l.length || u ? (window._domqueryStateManager && (l = window._domqueryStateManager.histories.get("gong_tea_yun_alert_body_history")) && (l.preventBack = !0), history.forward()) : window._domqueryStateManager && (l = window._domqueryStateManager.histories.get("gong_tea_yun_alert_body_history")) && (l.preventBack = !1)
+                    });
+                    v.bodyHistoryRegistered = !0;
+                    const d = "gong_tea_yun_" + (a.id && null !== a.id ? "alert_" + a.id : "alert_" + y);
+                    setTimeout(() => {
+                        if (window._domqueryStateManager) {
+                            const l = window._domqueryStateManager.histories.get(d);
+                            l && (l.preventBack = !0)
+                        }
+                    }, 10)
+                }
+                A.onCloseStart = function(d) {
+                    v.closingAlerts.add(y)
+                };
+                A.onCloseEnd = "alert_body_history" !== A.target ? function(d, l) {
+                    la("back", !0, void 0, "closeBack").then(() => {
+                        l()
+                    }).catch(() => {
+                        l()
+                    })
+                } : function(d, l) {
+                    la("back", !0, void 0, "closeBack").then(() => {
+                        if (window._domqueryStateManager)
+                            for (let [u,
+                                    k
+                                ] of window._domqueryStateManager.histories)(u.includes("alert_") || u.includes("overlay_")) && k.isActive && (k.preventBack = !0);
+                        l();
+                        setTimeout(() => {
+                            if (window._domqueryStateManager) {
+                                const k = [];
+                                for (let [n, N] of window._domqueryStateManager.histories)
+                                    if ((n.includes("alert_") || n.includes("overlay_")) && N.isActive) {
+                                        var u = n.replace("gong_tea_yun_", "");
+                                        k.push(u)
+                                    } for (u = k.length - 1; 0 <= u; u--) domquery(window).historyOff(k[u]);
+                                v.bodyHistoryRegistered = !1
+                            }
+                        }, 100)
+                    }).catch(() => {
+                        if (window._domqueryStateManager)
+                            for (let [u,
+                                    k
+                                ] of window._domqueryStateManager.histories)(u.includes("alert_") || u.includes("overlay_")) && k.isActive && (k.preventBack = !0);
+                        l();
+                        setTimeout(() => {
+                            if (window._domqueryStateManager) {
+                                const k = [];
+                                for (let [n, N] of window._domqueryStateManager.histories)
+                                    if ((n.includes("alert_") || n.includes("overlay_")) && N.isActive) {
+                                        var u = n.replace("gong_tea_yun_", "");
+                                        k.push(u)
+                                    } for (u = k.length - 1; 0 <= u; u--) domquery(window).historyOff(k[u]);
+                                v.bodyHistoryRegistered = !1
+                            }
+                        }, 100)
+                    })
+                };
+                domquery(window).historyOn(w, function(d) {}, !1, null, A)
+            }
+            if (a.close) ma.style.backgroundColor ||
+                (ma.style.backgroundColor = "rgba(0, 0, 0, 0.5)"), ma.addEventListener("click", c => {
+                    c.preventDefault();
+                    c.stopPropagation();
+                    K || (c = Array.from(document.querySelectorAll(".domquery-alert")), c.findIndex(f => f.getAttribute("data-instance-id") === a.instanceId) === c.length - 1 && la("xclose", !0, void 0, "overlay"))
+                });
+            else {
+                let c = 0,
+                    f = !1;
+                ma.addEventListener("click", e => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (!K && !f) {
+                        e = ma.getAttribute("data-connected-alert") || ma.getAttribute("data-instance-id");
+                        var d = document.querySelector(`.domquery-alert[data-instance-id="${e}"]`);
+                        if (d) {
+                            if (a.shadow) {
+                                let l = 0,
+                                    u = 120;
+                                !0 === a.vibrate && (u = 30);
+                                const k = () => {
+                                    const n = 0 === l % 2 ? "1" : "0.2";
+                                    d.style.boxShadow = `0 0 23px rgba(${a.shadow.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i)?a.shadow.match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i).slice(1).map(N=>parseInt(N,16)).join(","):"red"===a.shadow?"255,0,0":"blue"===a.shadow?"0,0,255":"green"===a.shadow?"0,255,0":"pink"===a.shadow?"255,192,203":"purple"===a.shadow?"128,0,128":"cyan"===a.shadow?"0,255,255":"yellow"===a.shadow?"255,255,0":
+"0,0,0"},${n})`;
+                                    l++;
+                                    10 > l ? setTimeout(k, u) : d.style.boxShadow = "0 2px 10px rgba(0,0,0,0.1)"
+                                };
+                                k();
+                                c = 20
+                            }
+                            if (!0 === a.vibrate) {
+                                e = "CC TC LC RC BC TL TR BL BR".split(" ").some(n => void 0 !== a[n]);
+                                const l = "TC LC RC BC TL TR BL BR".split(" ").find(n => void 0 !== a[n]);
+                                if ("vibrate" in navigator) try {
+                                    navigator.vibrate(p / 3)
+                                } catch (n) {}
+                                const u = d.style.transform,
+                                    k = d.style.transition;
+                                f = !0;
+                                e ? ($.aBox(d, l), L.setTimeoutRAF(() => {
+                                    d.style.transform = u;
+                                    d.style.transition = k;
+                                    f = !1
+                                }, 300)) : (d.style.transition = "box-shadow 0s", d.style.boxShadow =
+                                    "none", L.setTimeoutRAF(() => {
+                                        $.aBox(d, l);
+                                        L.setTimeoutRAF(() => {
+                                            d.style.transform = u;
+                                            d.style.transition = k;
+                                            f = !1
+                                        }, 300)
+                                    }, c))
+                            }
+                        }
+                    }
+                })
+            }
+        }
+        a.buttonConfigs && a.buttonConfigs.forEach(c => {
+            const f = b.querySelector(`.alert-${c.name}-btn`);
+            f && f.addEventListener("click", () => {
+                if (!K) {
+                    t = m = T = 0;
+                    aa = !1;
+                    ka = 0;
+                    Y = 1;
+                    b.style.transition = "";
+                    var e = document.querySelector(".domquery-shadow-overlay");
+                    e && (e.style.transition = "");
+                    a.closeBack && a.History && !a.toast && domquery(window).historyOff("alert_" + y, function() {
+                        "number" === typeof a.retainScroll &&
+                            D(C, a.retainScroll)
+                    });
+                    e = createAlertContext(c.name, [], "button");
+                    e.close = function(d = "xclose") {
+                        return la(d, !0, void 0, d)
+                    };
+                    "function" === typeof a[c.name] ? a[c.name].call(e, c.name, "button") : la(c.name, !0, void 0, c.name)
+                }
+            })
+        });
+        w = x.getElement(b, ".domquery-alert-close-btn");
+        A = x.getElement(b, ".domquery-close-x-btn");
+        w && w.addEventListener("click", () => {
+            if (!K)
+                if ("function" === typeof a.Ok) {
+                    const c = createAlertContext("Ok", [], "button");
+                    c.close = function(f = "xclose") {
+                        return la(f, !0, void 0, f)
+                    };
+                    a.Ok.call(c, "Ok", "button")
+                } else la("close",
+                    !1, void 0, "button")
+        });
+        A && (A.style.pointerEvents = "auto", A.addEventListener("click", c => {
+            c.stopPropagation();
+            K || (a.closeBack && a.History && domquery(window).historyOff("alert_" + y, function() {
+                !1 === a.retainScroll ? D(C, 0) : "number" === typeof a.retainScroll && D(C, a.retainScroll)
+            }), la("xclose", !0, void 0, "xbutton"))
+        }));
+        b.style.cssText += "pointer-events: auto;";
+        if (w = x.getElement(b, ".alert-scroll-wrapper")) w.addEventListener("wheel", c => {
+            a.unscroll && ($.AlertScrollManager.startUserScrolling(y), !0 !== a.unscroll && $.AlertScrollManager.checkScrollThreshold(y,
+                b, a.unscroll), $.AlertScrollManager.endUserScrolling(y))
+        }, {
+            passive: !0
+        }), w.addEventListener("touchmove", c => {
+            a.unscroll && ($.AlertScrollManager.startUserScrolling(y), !0 !== a.unscroll && $.AlertScrollManager.checkScrollThreshold(y, b, a.unscroll), $.AlertScrollManager.endUserScrolling(y))
+        }, {
+            passive: !0
+        }), !0 !== a.unscroll && !1 !== a.unscroll && (A = () => {
+            $.AlertScrollManager.checkScrollThreshold(y, b, a.unscroll)
+        }, w.addEventListener("scroll", A, {
+            passive: !0
+        }), g.alertScrollHandlers || (g.alertScrollHandlers = {}), g.alertScrollHandlers[y] = {
+            element: w,
+            handler: A
+        }), a.unscroll && (a.hideScrollbar && (A = document.createElement("style"), A.textContent = "\n\t\t\t\t\t.alert-scroll-wrapper::-webkit-scrollbar {\n\t\t\t\t\t\tdisplay: none !important;\n\t\t\t\t\t\twidth: 0 !important;\n\t\t\t\t\t\theight: 0 !important;\n\t\t\t\t\t}\n\t\t\t\t", document.head.appendChild(A), g.alertScrollStyles || (g.alertScrollStyles = {}), g.alertScrollStyles[y] = A), setTimeout(() => {
+            $.AlertScrollManager.scrollToBottom(y, b, !0)
+        }, 100), A = new MutationObserver(c => {
+            $.AlertScrollManager.scrollToBottom(y,
+                b)
+        }), w = w.querySelector("div") || w, A.observe(w, {
+            childList: !0,
+            subtree: !0,
+            characterData: !0
+        }), v.observers[y] = A);
+        return b
+    };
+    $.alert = function(b, a = {}, p = 300, h) {
+        if (v.callbackExecuting) return new Promise(C => {
+            setTimeout(() => {
+                const Z = $.alert(b, a, p, h);
+                Z && "function" === typeof Z.then ? Z.then(C) : C(Z)
+            }, 300)
+        });
+        "object" !== typeof b || null === b || Array.isArray(b) || void 0 === b.text && void 0 === b.width && void 0 === b.height && void 0 === b.title && void 0 === b.bgcolor && void 0 === b.color && void 0 === b.$Ok && void 0 === b.close && void 0 === b.xclose &&
+            void 0 === b.input && void 0 === b.prompt && void 0 === b.toast ? "number" === typeof a ? (h = p, p = a, a = {}) : "function" === typeof a ? (h = a, a = {}) : "function" === typeof p && (h = p, p = 300) : ("number" === typeof a ? (p = a, a = b) : "function" === typeof a ? (h = a, a = b) : a = "object" !== typeof a || null === a || Array.isArray(a) ? b : Object.assign({}, b, a), b = "");
+        (3 <= arguments.length || !a) && a && (delete a.openSpeed, delete a.closeSpeed);
+        var r = a.parent,
+            F = Error().stack || "",
+            M = "undefined" !== typeof event && event.target instanceof Element && event.target.closest(".domquery-alert") ||
+            F.includes("onOpen") || F.includes("function") || "_self" === a.parent;
+        F = Array.from(document.querySelectorAll(".domquery-alert"));
+        F.filter(C => !C.contains(document.activeElement) && C !== document.activeElement);
+        void 0 === r && 0 < F.length && (a.parent = "_self", a.preserveExisting = !0);
+        if (M) a._originalParent = r;
+        else {
+            a._originalParent = r;
+            r = "_self" === a.parent;
+            M = a.parent instanceof Element || a.parent instanceof HTMLDocument;
+            const C = a.parent === window || a.parent === document.defaultView;
+            if (!("_blank" === a.parent || r || M || C) && 0 < F.length) return null;
+            if (a.parent === window || a.parent === document.defaultView) a.parent = "_blank"
+        }
+        F = !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+            isMobile: !1
+        }).isMobile;
+        if ((!0 === a.input || "string" === typeof a.input) && F) {
+            const C = a.onOpen;
+            a.onOpen = function(Z) {
+                C && C.call(this, Z);
+                const A = Z.querySelectorAll(!0 === a.input ? 'input:not([type="button"]):not([type="submit"]):not([type="reset"]):not([type="checkbox"]):not([type="radio"]), textarea' : a.input);
+                Z.querySelectorAll("select").forEach(T => {
+                    T.classList.add("no-virtual-layer")
+                });
+                if (0 < A.length) {
+                    const T = q => {
+                        function m(c, f = 5) {
+                            let e;
+                            if (c.startsWith("#")) {
+                                var d = c.substring(1);
+                                3 === d.length ? (c = parseInt(d[0] + d[0], 16), e = parseInt(d[1] + d[1], 16), d = parseInt(d[2] + d[2], 16)) : (c = parseInt(d.substring(0, 2), 16), e = parseInt(d.substring(2, 4), 16), d = parseInt(d.substring(4, 6), 16))
+                            } else if (c.startsWith("rgb"))
+                                if ((d = c.match(/\d+/g)) && 3 <= d.length) c = parseInt(d[0]), e = parseInt(d[1]), d = parseInt(d[2]);
+                                else return c;
+                            else return c;
+                            c = Math.min(255, Math.round(c * (100 + f) / 100));
+                            e = Math.min(255, Math.round(e * (100 + f) /
+                                100));
+                            d = Math.min(255, Math.round(d * (100 + f) / 100));
+                            return `#${c.toString(16).padStart(2,"0")}${e.toString(16).padStart(2,"0")}${d.toString(16).padStart(2,"0")}`
+                        }
+
+                        function t(c) {
+                            let f;
+                            if (c.startsWith("#")) {
+                                var e = c.substring(1);
+                                3 === e.length ? (c = parseInt(e[0] + e[0], 16), f = parseInt(e[1] + e[1], 16), e = parseInt(e[2] + e[2], 16)) : (c = parseInt(e.substring(0, 2), 16), f = parseInt(e.substring(2, 4), 16), e = parseInt(e.substring(4, 6), 16))
+                            } else return "#ffffff";
+                            return 128 < (299 * c + 587 * f + 114 * e) / 1E3 ? "#000000" : "#ffffff"
+                        }
+                        if ("checkbox" !== q.type &&
+                            "radio" !== q.type && "select" !== q.tagName.toLowerCase() && !q.classList.contains("no-virtual-layer")) {
+                            document.querySelectorAll(".virtual-input-layer").forEach(c => {
+                                c && c.parentNode && c.parentNode.removeChild(c)
+                            });
+                            document.querySelectorAll(".virtual-input-overlay").forEach(c => {
+                                c && c.parentNode && c.parentNode.removeChild(c)
+                            });
+                            var G = q.value,
+                                aa = q.type,
+                                ia = q.placeholder,
+                                ka = q.getAttribute("title"),
+                                ha = q.getAttribute("titleColor"),
+                                Y = q.getAttribute("background"),
+                                Ea = q.getAttribute("color"),
+                                ra = a.inputBgcolor || "#ffffff",
+                                Ba = a.inputColor || "#333333",
+                                ya = ha || Ba;
+                            ha = (c, f = 20) => {
+                                let e;
+                                if (c.startsWith("#")) {
+                                    var d = c.substring(1);
+                                    3 === d.length ? (c = parseInt(d[0] + d[0], 16), e = parseInt(d[1] + d[1], 16), d = parseInt(d[2] + d[2], 16)) : (c = parseInt(d.substring(0, 2), 16), e = parseInt(d.substring(2, 4), 16), d = parseInt(d.substring(4, 6), 16))
+                                } else if (c.startsWith("rgb"))
+                                    if ((d = c.match(/\d+/g)) && 3 <= d.length) c = parseInt(d[0]), e = parseInt(d[1]), d = parseInt(d[2]);
+                                    else return c;
+                                else return c;
+                                c = Math.max(0, Math.round(c * (100 - f) / 100));
+                                e = Math.max(0, Math.round(e * (100 -
+                                    f) / 100));
+                                d = Math.max(0, Math.round(d * (100 - f) / 100));
+                                return `#${c.toString(16).padStart(2,"0")}${e.toString(16).padStart(2,"0")}${d.toString(16).padStart(2,"0")}`
+                            };
+                            var Aa = ha(ra),
+                                xa = null;
+                            !0 === a.inputOverlay && (xa = document.createElement("div"), xa.className = "virtual-input-overlay", xa.id = "virtual-input-overlay-" + Date.now(), xa.style.cssText = `\n\t\t\t\t\t\t\t\tposition: fixed;\n\t\t\t\t\t\t\t\ttop: 0;\n\t\t\t\t\t\t\t\tleft: 0;\n\t\t\t\t\t\t\t\twidth: 100%;\n\t\t\t\t\t\t\t\theight: 100%;\n\t\t\t\t\t\t\t\tbackground-color: rgba(0, 0, 0, 0.5);\n\t\t\t\t\t\t\t\tz-index: ${parseInt(Z.style.zIndex||
+9999)+2};\n\t\t\t\t\t\t\t\topacity: 0;\n\t\t\t\t\t\t\t\ttransition: opacity 0.3s ease;\n\t\t\t\t\t\t\t`, document.body.appendChild(xa), setTimeout(() => {
+                                xa.style.opacity = "1"
+                            }, 10));
+                            var da = document.createElement("div");
+                            da.className = "virtual-input-layer";
+                            da.id = "virtual-input-layer-" + Date.now();
+                            da.style.cssText = `\n\t\t\t\t\t\t\tposition: fixed;\n\t\t\t\t\t\t\tleft: 0;\n\t\t\t\t\t\t\tright: 0;\n\t\t\t\t\t\t\ttop: 0;\n\t\t\t\t\t\t\tbackground-color: ${ra};\n\t\t\t\t\t\t\tcolor: ${Ba};\n\t\t\t\t\t\t\tpadding: ${a.inputPadding||
+"15px"};\n\t\t\t\t\t\t\tmargin: ${a.inputMargin||"0"};\n\t\t\t\t\t\t\tborder-radius: ${a.inputRadius||"0"};\n\t\t\t\t\t\t\tbox-shadow: 0 2px 10px rgba(0,0,0,0.2);\n\t\t\t\t\t\t\tz-index: ${parseInt(Z.style.zIndex||9999)+2};\n\t\t\t\t\t\t\tdisplay: flex;\n\t\t\t\t\t\t\tflex-direction: column;\n\t\t\t\t\t\t\t-webkit-tap-highlight-color: transparent;\n\t\t\t\t\t\t\ttouch-action: manipulation;\n\t\t\t\t\t\t\tfont-size: ${a.inputFontsize||"16px"};\n\t\t\t\t\t\t`;
+                            if (ka) {
+                                const c = document.createElement("div");
+                                c.textContent = ka;
+                                c.style.cssText = `\n\t\t\t\t\t\t\t\ttext-align: center;\n\t\t\t\t\t\t\t\tmargin-bottom: 15px;\n\t\t\t\t\t\t\t\tfont-weight: bold;\n\t\t\t\t\t\t\t\tcolor: ${ya};\n\t\t\t\t\t\t\t`;
+                                da.appendChild(c)
+                            }
+                            var za = document.createElement("input");
+                            za.type = aa || "text";
+                            za.value = G || "";
+                            za.placeholder = ia || "";
+                            za.style.cssText = `\n\t\t\t\t\t\t\tmargin: 0 0 10px 0;\n\t\t\t\t\t\t\tpadding: 10px;\n\t\t\t\t\t\t\tborder: 1px solid ${ha(ra,10)};\n\t\t\t\t\t\t\tborder-radius: 4px;\n\t\t\t\t\t\t\tfont-size: 16px;\n\t\t\t\t\t\t\tbackground-color: ${Y||
+("#ffffff"===ra?"#ffffff":m(ra,5))};\n\t\t\t\t\t\t\tcolor: ${Ea||Ba};\n\t\t\t\t\t\t\toutline: none;\n\t\t\t\t\t\t\tappearance: none;\n\t\t\t\t\t\t\t-webkit-appearance: none;\n\t\t\t\t\t\t`;
+                            G = document.createElement("style");
+                            Ba = a.inputPlaceholder || Ba;
+                            G.textContent = `\n\t\t\t\t\t\t\t#${da.id} input::placeholder {\n\t\t\t\t\t\t\t\tcolor: ${Ba};\n\t\t\t\t\t\t\t\topacity: ${a.inputPlaceholder?1:.5};\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t#${da.id} input::-webkit-input-placeholder {\n\t\t\t\t\t\t\t\tcolor: ${Ba};\n\t\t\t\t\t\t\t\topacity: ${a.inputPlaceholder?
+1:.5};\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t#${da.id} input::-moz-placeholder {\n\t\t\t\t\t\t\t\tcolor: ${Ba};\n\t\t\t\t\t\t\t\topacity: ${a.inputPlaceholder?1:.5};\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t\t#${da.id} input:-ms-input-placeholder {\n\t\t\t\t\t\t\t\tcolor: ${Ba};\n\t\t\t\t\t\t\t\topacity: ${a.inputPlaceholder?1:.5};\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t`;
+                            document.head.appendChild(G);
+                            var Da = document.createElement("button");
+                            Da.textContent = a.inputConfirm || "Confirm";
+                            Da.style.cssText = `\n\t\t\t\t\t\t\tpadding: 10px;\n\t\t\t\t\t\t\tbackground-color: ${a.OkBgcolor||
+Aa};\n\t\t\t\t\t\t\tcolor: ${a.OkColor||t(Aa)};\n\t\t\t\t\t\t\tborder: none;\n\t\t\t\t\t\t\tborder-radius: 4px;\n\t\t\t\t\t\t\tfont-size: 16px;\n\t\t\t\t\t\t\tflex: 1;\n\t\t\t\t\t\t\tcursor: pointer;\n\t\t\t\t\t\t`;
+                            var la = document.createElement("button");
+                            la.textContent = a.inputCancel || "Cancel";
+                            la.style.cssText = `\n\t\t\t\t\t\t\tpadding: 10px;\n\t\t\t\t\t\t\tbackground-color: ${ha(ra,10)};\n\t\t\t\t\t\t\tcolor: ${t(ha(ra,10))};\n\t\t\t\t\t\t\tborder: none;\n\t\t\t\t\t\t\tborder-radius: 4px;\n\t\t\t\t\t\t\tfont-size: 16px;\n\t\t\t\t\t\t\tflex: 1;\n\t\t\t\t\t\t\tcursor: pointer;\n\t\t\t\t\t\t`;
+                            ra = document.createElement("div");
+                            ra.style.cssText = "\n\t\t\t\t\t\t\tdisplay: flex;\n\t\t\t\t\t\t\tgap: 10px;\n\t\t\t\t\t\t";
+                            ra.appendChild(Da);
+                            ra.appendChild(la);
+                            da.appendChild(za);
+                            da.appendChild(ra);
+                            da.addEventListener("click", function(c) {
+                                c.stopPropagation()
+                            });
+                            za.addEventListener("click", function(c) {
+                                c.stopPropagation()
+                            });
+                            Da.addEventListener("click", function(c) {
+                                c.stopPropagation()
+                            });
+                            la.addEventListener("click", function(c) {
+                                c.stopPropagation()
+                            });
+                            da.dataset.alertId = a.instanceId;
+                            var ma = () => {
+                                try {
+                                    xa && (xa.style.opacity =
+                                        "0", setTimeout(() => {
+                                            const d = document.getElementById(xa.id);
+                                            d && d.parentNode && d.parentNode.removeChild(d)
+                                        }, 300));
+                                    document.querySelectorAll(".virtual-input-overlay").forEach(d => {
+                                        d && d.parentNode && (d.style.opacity = "0", setTimeout(() => {
+                                            d.parentNode && d.parentNode.removeChild(d)
+                                        }, 300))
+                                    });
+                                    var c = document.getElementById(da.id);
+                                    if (c && c.parentNode) return c.parentNode.removeChild(c), !0;
+                                    const f = document.querySelectorAll(".virtual-input-layer");
+                                    if (0 < f.length) return f.forEach(d => {
+                                            d && d.parentNode && d.parentNode.removeChild(d)
+                                        }),
+                                        !0;
+                                    const e = document.body.children;
+                                    for (c = 0; c < e.length; c++)
+                                        if (e[c].classList && (e[c].classList.contains("virtual-input-layer") || e[c].classList.contains("virtual-input-overlay"))) return document.body.removeChild(e[c]), !0;
+                                    return !1
+                                } catch (f) {
+                                    return !1
+                                }
+                            };
+                            Da.addEventListener("click", () => {
+                                try {
+                                    q.value = za.value;
+                                    const c = new Event("input", {
+                                        bubbles: !0,
+                                        cancelable: !0
+                                    });
+                                    q.dispatchEvent(c);
+                                    const f = new Event("change", {
+                                        bubbles: !0,
+                                        cancelable: !0
+                                    });
+                                    q.dispatchEvent(f);
+                                    !0 === ("undefined" !== typeof $ && $.isMobile ? $.isMobile() : {
+                                        isIOS: !1
+                                    }).isIOS && q.setAttribute("value", za.value)
+                                } catch (c) {} finally {
+                                    ma() || Array.from(document.body.children).forEach(c => {
+                                        c.className && (c.className.includes("virtual-input-layer") || c.className.includes("virtual-input-overlay")) && document.body.removeChild(c)
+                                    })
+                                }
+                            });
+                            la.addEventListener("click", () => {
+                                ma() || Array.from(document.body.children).forEach(c => {
+                                    c.className && (c.className.includes("virtual-input-layer") || c.className.includes("virtual-input-overlay")) && document.body.removeChild(c)
+                                })
+                            });
+                            za.addEventListener("keydown",
+                                c => {
+                                    "Enter" === c.key ? (c.preventDefault(), Da.click()) : "Escape" === c.key && (c.preventDefault(), la.click())
+                                });
+                            document.body.appendChild(da);
+                            xa && xa.addEventListener("click", c => {
+                                c.target === xa && ma()
+                            });
+                            setTimeout(() => {
+                                const c = function(f) {
+                                    da.contains(f.target) || f.target === da || f.target.classList.contains("virtual-input-overlay") || (ma(), document.removeEventListener("click", c))
+                                };
+                                document.addEventListener("click", c)
+                            }, 300);
+                            setTimeout(() => {
+                                za.focus()
+                            }, 100)
+                        }
+                    };
+                    A.forEach(q => {
+                        if (!(q.readOnly || q.disabled || q.classList.contains("no-virtual-layer"))) {
+                            var m =
+                                q.onfocus;
+                            q.addEventListener("click", t => {
+                                t.preventDefault();
+                                t.stopPropagation();
+                                T(q)
+                            });
+                            q.onfocus = function(t) {
+                                "checkbox" === q.type || "radio" === q.type || "select" === q.tagName.toLowerCase() || q.classList.contains("no-virtual-layer") ? m && m.call(this, t) : (t && t.preventDefault(), q.blur(), m && m.call(this, t), setTimeout(() => {
+                                    T(q)
+                                }, 50))
+                            }
+                        }
+                    })
+                }
+            }
+        }
+        if (!0 === a.confirm) return a.Ok = a.Ok || "OK", a.$cancel = a.$cancel || "cancel", new Promise(C => {
+            const Z = event,
+                {
+                    alertBox: A,
+                    options: T,
+                    speed: q,
+                    buttonConfigs: m
+                } = $._alert0(String(b), a, p);
+            T.buttonConfigs =
+                m;
+            $._alert1(A, T, q, (t, G) => {
+                t = "button" === G;
+                h && h(t);
+                C(t)
+            }, Z)
+        });
+        F = event;
+        const {
+            alertBox: y,
+            options: K,
+            speed: w,
+            buttonConfigs: D
+        } = $._alert0(b, a, p);
+        K.buttonConfigs = D;
+        return $._alert1(y, K, w, h, F)
+    };
+    $.confirm = function(b, a = {}, p) {
+        if ("string" !== typeof b || !b.trim()) return {
+            else: function() {
+                return this
+            }
+        };
+        "function" === typeof a && (p = a, a = {});
+        a.ifO = !0;
+        return $.if(b, a, 300, p)
+    };
+    $.toast = function(b, a = {}, p = 300, h) {
+        if ("object" === typeof b && null !== b) {
+            h = p;
+            p = a;
+            a = b;
+            if (!0 === a.closeToast) {
+                Array.from(document.querySelectorAll(".domquery-alert.toast-alert")).forEach(r => {
+                    (r = x.getElement(r, ".domquery-close-x-btn") || x.getElement(r, ".domquery-alert-close-btn")) && r.click()
+                });
+                return
+            }
+            b = a.message || a.title || "";
+            delete a.message;
+            delete a.speed
+        } else "string" !== typeof b && (b = String(b));
+        "function" === typeof a ? (h = a, a = {}) : "function" === typeof p && (h = p, p = 300);
+        void 0 === a.timeOut ? (a.timeOut = 3E3, void 0 === a.$Ok && (a.$Ok = !1)) : !1 === a.timeOut ? delete a.timeOut : void 0 === a.$Ok && (a.$Ok = !1);
+        void 0 === a.background ? a.background = !1 : a.toastZindex = a.toastZindex || 9999;
+        void 0 === a.closeBack && (a.closeBack = !1);
+        a.History = !1;
+        a.prompt = !0;
+        a.toast = !0;
+        return $.alert(b, a, p, h)
+    };
+    $.closeToast = function(b) {
+        if (b = document.getElementById(b)) {
+            b.timeoutId && (clearTimeout(b.timeoutId), b.timeoutId = null);
+            const a = b.getAttribute("data-instance-id");
+            a && v.options && v.options[a] && $._alert1(b, v.options[a], 0).close_Alert("close", !0, 0)
+        }
+    };
+    $.prompt = function(b, a = {}, p = 300, h) {
+        "function" === typeof a ? (h = a, a = {}) : "function" === typeof p && (h = p, p = 300);
+        a.prompt = !0;
+        return $.alert(b, a, p, h)
+    };
+    $.if = function(b, a = {}, p, h) {
+        let r;
+        const F = q => {
+            if ("function" ===
+                typeof q) return q();
+            if (Array.isArray(q) && 3 === q.length) {
+                const [m, t, G] = q;
+                switch (t) {
+                    case ">":
+                        return m > G;
+                    case "<":
+                        return m < G;
+                    case ">=":
+                        return m >= G;
+                    case "<=":
+                        return m <= G;
+                    case "===":
+                        return m === G;
+                    case "!==":
+                        return m !== G;
+                    default:
+                        return !!q
+                }
+            } else return "boolean" === typeof q ? q : !!q
+        };
+        var M = (q, m, t = h) => $if(q, m, t);
+        if ("object" === typeof a) {
+            if (void 0 !== a.if) return F(b) ? M(a.if, {
+                ...a,
+                if: void 0
+            }, p, h) : {
+                else: function() {},
+                elseif: function() {}
+            };
+            if (a.hasOwnProperty("else")) {
+                M = a.else;
+                delete a.else;
+                if (F(b)) return $.alert(a.title ||
+                    b, a, p);
+                "function" === typeof M && M();
+                return {
+                    else: function() {},
+                    elseif: function() {}
+                }
+            }
+        }
+        "number" === typeof a ? (h = p, p = a, a = {}) : "function" === typeof a ? (h = a, a = {}, p = 300) : "function" === typeof p && (h = p, p = 300);
+        4 <= arguments.length && "function" === typeof arguments[3] && (h = arguments[3]);
+        var y = r = b;
+        a.ifO ? y = String(b) : (r = F(b), y = String(r));
+        const K = (q => function(...m) {
+                let t = -1;
+                for (let G = m.length - 1; 0 <= G; G--)
+                    if ("object" === typeof m[G] && null !== m[G] && !Array.isArray(m[G])) {
+                        t = G;
+                        break
+                    } 0 <= t ? m[t].hasOwnProperty("retainScroll") || (m[t] = {
+                    ...m[t],
+                    retainScroll: !1
+                }) : m.push({
+                    retainScroll: !1
+                });
+                return q.apply(this, m)
+            })($.alert),
+            w = q => {
+                const m = $.alert;
+                $.alert = K;
+                try {
+                    q?.()
+                } finally {
+                    $.alert = m
+                }
+            };
+        M = {
+            elseif: function(q, m) {
+                !r && "function" === typeof m && F(q) && (w(m), this.previousResult = !0);
+                return this
+            },
+            else: function(q) {
+                if (!r && !this.previousResult && "function" === typeof q) return w(q), this;
+                if (a.$cancel) Z.cancel = q;
+                else {
+                    const m = q.toString().match(/\(([^)]*)\)/);
+                    if (m && m[1]) {
+                        const t = m[1].trim();
+                        A.includes(t) && (Z[t] = q, A = A.filter(G => G !== t))
+                    }
+                }
+                return this
+            },
+            previousResult: !1
+        };
+        a = (q => {
+            q = {
+                ...q
+            };
+            void 0 !== q.$ok && (q.$Ok = q.$ok, delete q.$ok);
+            void 0 !== q.Ok && (q.$Ok = q.Ok, delete q.Ok);
+            void 0 !== q.$OkBgcolor && (q.OkBgcolor = q.$OkBgcolor, delete q.$OkBgcolor);
+            void 0 !== q.$OkColor && (q.OkColor = q.$OkColor, delete q.$OkColor);
+            return q
+        })(a);
+        const D = "$Ok $ok $OkBgcolor $OkColor $cancel $cancelBgcolor $cancelColor".split(" ");
+        var C = Object.keys(a).some(q => q.startsWith("$") && !D.includes(q));
+        a = {
+            $Ok: "OK",
+            Cancel: "cancel",
+            ...(C || !1 === a.$cancel ? {} : {
+                $cancel: "cancel"
+            }),
+            OkBgcolor: "#E0E0E0",
+            OkColor: "#000000",
+            $cancelBgcolor: "#ECEFF1",
+            $cancelColor: "#607D8B",
+            ...a
+        };
+        if (C || !1 === a.$cancel) delete a.$cancel, delete a.$cancelBgcolor, delete a.$cancelColor;
+        let Z = {},
+            A = Object.keys(a).filter(q => q.startsWith("$") && !D.includes(q) && "undefined" !== typeof a[q] && null !== a[q]).map(q => q.substring(1));
+        C = {
+            else: function(q) {
+                if (a.$cancel) Z.cancel = q;
+                else {
+                    const m = q.toString().match(/\(([^)]*)\)/);
+                    if (m && m[1]) {
+                        const t = m[1].trim();
+                        A.includes(t) && (Z[t] = q, A = A.filter(G => G !== t))
+                    }
+                }
+                return this
+            }
+        };
+        if (!a.ifO && !r) return Z.cancel && Z.cancel.call(null,
+            "condition_false"), Object.assign(C, M);
+        const T = {
+            ...a
+        };
+        void 0 !== a.$cancel && (T.Cancel = a.$cancel, T.$cancel = a.$cancel);
+        T.Ok = function() {
+            h && "function" === typeof h && h.call(this, this);
+            this.close()
+        };
+        a.$cancel && (T.cancel = function() {
+            this.close();
+            Z.cancel && Z.cancel.call(this, "cancel")
+        });
+        Object.keys(a).filter(q => q.startsWith("$") && !D.includes(q)).forEach(q => {
+            const m = q.substring(1);
+            T[m] = function() {
+                this.close();
+                Z[m] && Z[m].call(this, m)
+            }
+        });
+        y = T.message || y;
+        T.message && delete T.message;
+        $.alert(y, T, p);
+        return Object.assign(C,
+            M)
+    };
+    $.closeAlert = function(b, a) {
+        "function" === typeof b && (a = b, b = null);
+        var p = document.querySelectorAll(".domquery-alert");
+        if (0 === p.length) return document.body.style.overflow = "", document.documentElement.style.overflow = "", document.querySelectorAll(".domquery-blank-container").forEach(K => {
+            K && K.parentNode && K.parentNode.removeChild(K)
+        }), document.querySelectorAll(".domquery-shadow-overlay, .domquery-toast-overlay").forEach(K => {
+            K && K.parentNode && K.parentNode.removeChild(K)
+        }), "function" === typeof a && setTimeout(a,
+            300, null, "no_alert"), !1;
+        let h = null;
+        if (b) {
+            if ((h = document.getElementById(b)) || (h = document.querySelector(`.domquery-alert[data-id="${b}"]`)), h || (h = document.querySelector(`.domquery-alert[data-instance-id="${b}"]`)), !h || !h.classList.contains("domquery-alert")) return "function" === typeof a && setTimeout(a, 50, null, "id_not_found"), !1
+        } else h = p[p.length - 1];
+        let r = !1;
+        const F = (K, w) => {
+                r || "function" !== typeof a || (r = !0, setTimeout(() => {
+                    a(K, w)
+                }, 300))
+            },
+            M = new MutationObserver(K => {
+                for (const w of K) "childList" === w.type && (K =
+                    Array.from(w.removedNodes), K.includes(h) || K.some(D => D.contains && D.contains(h))) && (M.disconnect(), F("removed", "dom_observation"))
+            });
+        M.observe(document.body, {
+            childList: !0,
+            subtree: !0
+        });
+        b = setTimeout(() => {
+            M.disconnect();
+            F("timeout", "safety")
+        }, 1E3);
+        try {
+            const K = h.getAttribute("data-instance-id");
+            p = "normal";
+            let w = {};
+            try {
+                var y = h.getAttribute("data-options");
+                y && (w = JSON.parse(y)) && "_self" === w.parent && (p = "self")
+            } catch (C) {}
+            const D = x.getElement(h, ".domquery-close-x-btn") || x.getElement(h, ".domquery-alert-close-btn");
+            if ("self" === p) {
+                const C = h.querySelectorAll("button");
+                if (0 < C.length) {
+                    y = null;
+                    for (const Z of C) {
+                        const A = Z.textContent.trim().toLowerCase();
+                        if ("\ud655\uc778" === A || "ok" === A || "\uc608" === A || "yes" === A) {
+                            y = Z;
+                            break
+                        }
+                    }
+                    y ? y.click() : D ? D.click() : C[0].click()
+                } else D && D.click();
+                setTimeout(() => {
+                    if (document.contains(h)) {
+                        h.parentNode && h.parentNode.removeChild(h);
+                        const Z = document.querySelectorAll(".domquery-shadow-overlay, .domquery-toast-overlay");
+                        for (const A of Z) A.parentNode && A.parentNode.removeChild(A);
+                        F("forced_removal",
+                            "parent_self")
+                    }
+                }, 100)
+            } else if (D) D.click(), setTimeout(() => {
+                if (document.contains(h)) {
+                    const C = document.querySelector(`.domquery-alert[data-instance-id="${K}"]`);
+                    if (C) {
+                        const Z = x.getElement(C, ".domquery-close-x-btn") || x.getElement(C, ".domquery-alert-close-btn");
+                        Z && Z.click();
+                        setTimeout(() => {
+                            if (document.contains(C)) {
+                                C.parentNode && C.parentNode.removeChild(C);
+                                const A = document.querySelectorAll(".domquery-shadow-overlay, .domquery-toast-overlay");
+                                for (const T of A) T.parentNode && T.parentNode.removeChild(T);
+                                document.querySelectorAll(".domquery-blank-container").forEach(T => {
+                                    T && T.parentNode && T.parentNode.removeChild(T)
+                                })
+                            }
+                        }, 100)
+                    }
+                }
+            }, 100);
+            else {
+                h.parentNode && h.parentNode.removeChild(h);
+                const C = document.querySelectorAll(".domquery-shadow-overlay, .domquery-toast-overlay");
+                for (const Z of C) Z.parentNode && Z.parentNode.removeChild(Z);
+                F("forced_removal", "no_button")
+            }
+            return !0
+        } catch (K) {
+            try {
+                h && h.parentNode && h.parentNode.removeChild(h);
+                const w = document.querySelectorAll(".domquery-shadow-overlay, .domquery-toast-overlay");
+                for (const D of w) D.parentNode && D.parentNode.removeChild(D)
+            } catch (w) {}
+            clearTimeout(b);
+            M.disconnect();
+            F("emergency_removal", "error_recovery");
+            return !0
+        }
+    }
+})("undefined" !== typeof window ? window : this);
+$.fn.alert = function(g, v, L, x) {
+    const b = this[0];
+    if (!b) return this;
+    v = v || {};
+    v.parent = b;
+    $.alert(g, v, L, x);
+    return this
+};
+$.fn.confirm = function(g, v, L) {
+    const x = this[0];
+    if (!x) return this;
+    v = v || {};
+    v.parent = x;
+    return $.confirm(g, v, L)
+};
+$.fn.prompt = function(g, v, L, x) {
+    const b = this[0];
+    if (!b) return this;
+    v = v || {};
+    v.parent = b;
+    v.prompt = !0;
+    $.alert(g, v, L, x);
+    return this
+};
+$.fn.toast = function(g, v, L, x) {
+    const b = this[0];
+    if (!b) return this;
+    v = v || {};
+    v.parent = b;
+    v.toast = !0;
+    $.alert(g, v, L, x);
+    return this
+};
+$.fn.closeToast = function(g) {
+    !g && this[0] && this[0].id && (g = this[0].id);
+    g && $.closeToast(g);
+    return this
+};
+$.fn.if = function(g, v, L, x) {
+    const b = this[0];
+    if (!b) return this;
+    v = v || {};
+    v.parent = b;
+    return $.if(g, v, L, x)
+};
+$.fn.topAlert = function(g = 0, v = 300, L) {
+    var x = $(".domquery-alert");
+    if (0 === x.length) return "function" === typeof L && L(!1), !1;
+    x = x.last();
+    x = [x.find(".alert-scroll-wrapper"), x.find(".domquery-alert-body"), x.find('div[style*="overflow: auto"]'), x.find('div[style*="overflow-y: auto"]'), x.find('div[style*="overflow-y: scroll"]'), x].filter(a => 0 < a.length);
+    let b = !1;
+    for (const a of x)
+        if (a[0].scrollHeight > a[0].clientHeight) {
+            const p = a.scrollTop(),
+                h = g - p,
+                r = performance.now(),
+                F = M => {
+                    M = Math.min((M - r) / v, 1);
+                    a.scrollTop(p + h * (1 -
+                        Math.pow(1 - M, 2)));
+                    1 > M ? requestAnimationFrame(F) : b || "function" !== typeof L || (b = !0, L(!0))
+                };
+            requestAnimationFrame(F);
+            return !0
+        }
+    "function" !== typeof L || b || L(!1);
+    return !1
+};
+const $alert = function(...g) {
+        if (1 === g.length && "object" === typeof g[0]) {
+            g = g[0];
+            const v = "alert_" + Date.now();
+            g.alertId = v;
+            const L = document.createElement("div");
+            L.id = v;
+            for (const x in g) "function" === typeof g[x] && (L[x] = g[x]);
+            document.body.appendChild(L);
+            return void 0 !== g.speed ? $.alert(g.message || "", g, g.speed, g.callback) : void 0 !== g.callback ? $.alert(g.message || "", g, g.callback) : $.alert(g.message || "", g)
+        }
+        return $.alert.call($, ...g)
+    },
+    $confirm = function(...g) {
+        return 1 === g.length && "object" === typeof g[0] ? (g = g[0], $.confirm(g.message ||
+            "", g, g.callback)) : $.confirm.call($, ...g)
+    },
+    $prompt = function(...g) {
+        return 1 === g.length && "object" === typeof g[0] ? (g = g[0], $.prompt(g.message || "", g, g.speed || 300, g.callback)) : $.prompt.call($, ...g)
+    },
+    $toast = function(...g) {
+        return 1 === g.length && "object" === typeof g[0] ? (g = g[0], $.toast(g.message || "", g, g.speed || 300, g.callback)) : $.toast.call($, ...g)
+    },
+    $if = function(...g) {
+        return 1 === g.length && "object" === typeof g[0] ? (g = g[0], $.if(g.condition || "", g, g.speed, g.thenCallback)) : $.if.call($, ...g)
+    },
+    $closeAlert = function(g, v) {
+        return $.closeAlert(g,
+            v)
+    },
+    $topAlert = function(g = 0, v = 300, L) {
+        return $.fn.topAlert.call($, g, v, L)
+    },
+    $openAlert = function(g, v) {
+        return $.openAlert(g, v)
+    };
+$.openAlert = function(g, v) {
+    let L = null;
+    v ? "function" === typeof v && (L = v, v = {}) : v = {};
+    return new Promise(x => {
+        $.closeAlert(() => {
+            let b = !1;
+            var a = g;
+            g.startsWith("#") && (a = g.substring(1));
+            if (a = document.getElementById(a)) a.click(), b = !0;
+            L && "function" === typeof L && setTimeout(() => L(b), 50);
+            x(b)
+        })
+    })
+};
+const $lastAlert = function() {
+        const g = Array.from(document.querySelectorAll(".domquery-alert"));
+        return $(g[g.length - 1])
+},
+$spinner = function(g, v, L) {
+	if (!g) {
+		v = $(".domquery-spinner-overlay");
+		L = $(".domquery-spinner-container");
+		g = $(".domquery-spinner-message");
+		if (v.length) {
+			var x = parseFloat(v.css("opacity")),
+				b = v.data("opacity");
+			0 < x || b ? (L.remove(), g.length && (g.css({
+					position: "absolute",
+					transform: g.css("transform") || "translate(-50%, -50%)"
+				}), g.css("animation", "fadeOut 0.5s forwards")), v.css({
+					animation: "fadeOut 0.5s forwards"
+				}),
+				setTimeout(() => {
+					$(".domquery-spinner-overlay, .domquery-spinner-message").remove()
+				}, 500)) : $(".domquery-spinner-container, .domquery-spinner-overlay, .domquery-spinner-message").remove()
+		}
+		return this
+	}
+	$(".domquery-spinner-container, .domquery-spinner-overlay, .domquery-spinner-message-overlay, .domquery-spinner-message").remove();
+	const a = $lastAlert();
+	if (!a.length) return this;
+	let p;
+	g = (h = "transparent", r = 0) => {
+		const F = $("<div>", {
+				class: "domquery-spinner-container",
+				css: {
+					position: "absolute",
+					top: "50%",
+					left: "50%",
+					transform: "translate(-50%, -50%)",
+					width: "auto",
+					height: "auto",
+					display: "flex",
+					justifyContent: "center",
+					alignItems: "center",
+					zIndex: 9999,
+					pointerEvents: "none"
+				}
+			}),
+			M = $("<div>", {
+				class: "domquery-spinner",
+				css: {
+					width: "45px",
+					height: "45px",
+					border: "3px solid #f3f3f3",
+					borderTop: "3px solid #3498db",
+					borderRadius: "50%",
+					animation: "spin 1s linear infinite",
+					display: "block"
+				}
+			});
+		h = $("<div>", {
+			class: "domquery-spinner-overlay",
+			css: {
+				position: "absolute",
+				top: 0,
+				left: 0,
+				width: "100%",
+				height: "100%",
+				backgroundColor: h,
+				opacity: r,
+				display: "block",
+				zIndex: 9998,
+				textAlign: "center",
+				paddingTop: "60px"
+			}
+		});
+		const y = $("<div>", {
+			class: "domquery-spinner-message-overlay",
+			css: {
+				position: "absolute",
+				top: 0,
+				left: 0,
+				width: "100%",
+				height: "100%",
+				backgroundColor: "transparent",
+				zIndex: 9999,
+				display: "flex",
+				justifyContent: "center",
+				alignItems: "center",
+				pointerEvents: "none"
+			}
+		});
+		r = r || .8;
+		const K = "spinner-style-" + r;
+		$("#" + K).remove();
+		$("<style>", {
+			id: K,
+			text: `\n                @keyframes spin {\n                    0% { transform: rotate(0deg); }\n                    100% { transform: rotate(360deg); }\n                }\n                @keyframes fadeIn {\n                    0% { opacity: 0; }\n                    100% { opacity: ${r}; }\n                }\n                @keyframes fadeOut {\n                    0% { opacity: ${r}; }\n                    100% { opacity: 0; }\n                }\n                @keyframes messageShow {\n                    0% { opacity: 0; }\n                    100% { opacity: 1; }\n                }\n                @keyframes messageHide {\n                    0% { opacity: 1; }\n                    100% { opacity: 0; }\n                }\n                .domquery-spinner-overlay {\n                    animation: fadeIn 0.5s forwards;\n                }\n                .domquery-spinner-message {\n                    opacity: 0;\n                    animation: messageShow 0.5s forwards;\n                }\n            `
+		}).appendTo("head");
+		F.append(M);
+		a.append(h);
+		a.append(y);
+		a.append(F);
+		h.data("opacity", r);
+		return {
+			spinner: M,
+			overlay: h,
+			messageOverlay: y,
+			spinnerContainer: F
+		}
+	};
+	x = (h, r) => {
+		void 0 !== h && "50%" !== h && p.spinnerContainer.css({
+			top: h
+		});
+		void 0 !== r && "50%" !== r && p.spinnerContainer.css({
+			left: r
+		})
+	};
+	b = (h, r) => {
+		Object.keys(r).forEach(F => {
+			"function" === typeof r[F] && (h.find("*").each(function() {
+				this[F] = r[F].bind(this)
+			}), h[0][F] = r[F].bind(h[0]))
+		})
+	};
+	if ("object" === typeof v) {
+		const {
+			top: h,
+			left: r,
+			html: F,
+			text: M,
+			backgroundColor: y,
+			opacity: K,
+			spinner: w
+		} = v;
+		p =
+			g(y, K);
+		x(h, r);
+		if (void 0 !== F) {
+			const D = $("<div>", {
+				class: "domquery-spinner-message",
+				css: {
+					position: "absolute",
+					top: "0",
+					left: "0",
+					right: "0",
+					bottom: "0",
+					width: "100%",
+					height: "100%",
+					textAlign: "center",
+					zIndex: 10001,
+					color: "#fff",
+					display: "flex",
+					alignItems: "center",
+					justifyContent: "center",
+					boxSizing: "border-box",
+					margin: "0",
+					padding: "0",
+					opacity: 0,
+					pointerEvents: "auto"
+				}
+			}).appendTo(a);
+			D.html(F);
+			b(D, v);
+			setTimeout(() => {
+				D.css("animation", "messageShow 0.5s forwards")
+			}, 50);
+			!0 !== w && setTimeout(() => {
+				$(".domquery-spinner").hide();
+				$(".domquery-spinner-container").hide()
+			}, 300)
+		} else if (void 0 !== M) {
+			const D = $("<div>", {
+				class: "domquery-spinner-message",
+				css: {
+					position: "absolute",
+					top: "50%",
+					left: "50%",
+					transform: "translate(-50%, -50%)",
+					width: "100%",
+					textAlign: "center",
+					zIndex: 10001,
+					color: "#fff",
+					opacity: 0,
+					pointerEvents: "auto"
+				}
+			}).appendTo(a);
+			D.html(M);
+			b(D, v);
+			setTimeout(() => {
+				D.css("animation", "messageShow 0.5s forwards")
+			}, 50);
+			!0 !== w && setTimeout(() => {
+				$(".domquery-spinner").hide();
+				$(".domquery-spinner-container").hide()
+			}, 300)
+		}
+	} else p = g(), x(v,
+		L);
+	return this
+};
