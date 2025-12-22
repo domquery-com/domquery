@@ -1,0 +1,52 @@
+{
+  "name": "domquery-com",
+  "version": "1.0.1",
+  "description": "A modern JavaScript library that integrates all features needed for web app development. Optimized for hybrid app/WebView environments.",
+  "main": "domquery.js",
+  "module": "domquery.js",
+  "browser": "domquery.min.js",
+  "unpkg": "domquery.min.js",
+  "jsdelivr": "domquery.min.js",
+  "keywords": [
+    "javascript",
+    "dom-manipulation",
+    "hybrid-app",
+    "webview",
+    "mobile-web",
+    "spa",
+    "ajax",
+    "animation",
+    "jquery-alternative"
+  ],
+  "author": {
+    "name": "Byeonghee Gong & Taeyoon Gong",
+    "email": "bankcgi@naver.com, domquery.com@gmail.com"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/domquery-com/domquery.git"
+  },
+  "homepage": "https://domquery.com",
+  "bugs": {
+    "url": "https://github.com/domquery-com/domquery/issues"
+  },
+  "files": [
+    "domquery.js",
+    "domquery.min.js",
+    "src/",
+    "src_min/",
+    "LICENSE",
+    "README.md",
+    "README.ko.md"
+  ],
+  "exports": {
+    ".": {
+      "import": "./domquery.js",
+      "require": "./domquery.js",
+      "default": "./domquery.js"
+    },
+    "./min": "./domquery.min.js",
+    "./minified": "./domquery.min.js"
+  }
+}
