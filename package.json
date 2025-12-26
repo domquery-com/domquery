@@ -1,6 +1,6 @@
 {
   "name": "domquery-com",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "A modern JavaScript library that integrates all features needed for web app development. Optimized for hybrid app/WebView environments.",
   "main": "domquery.js",
   "module": "domquery.js",
@@ -50,4 +50,5 @@
     "./minified": "./domquery.min.js"
   }
 }
+
 
