@@ -3,7 +3,7 @@
 > Complete all features needed for web app development in one unified ecosystem
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)](https://github.com/domquery-com/domquery)
+[![Version](https://img.shields.io/badge/version-1.0.3-blue.svg)](https://github.com/domquery-com/domquery)
 
 **DomQuery** is a modern JavaScript library that integrates all features needed for web app development.  
 It is especially optimized for hybrid app/WebView environments.
@@ -270,3 +270,4 @@ MIT License - See [LICENSE](LICENSE) file for details.
 ---
 
 ⭐ If this project helped you, please give it a Star!
+
