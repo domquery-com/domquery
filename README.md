@@ -1,7 +1,7 @@
 # DomQuery
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)](https://github.com/domquery-com/domquery)
+[![Version](https://img.shields.io/badge/version-1.0.5-blue.svg)](https://github.com/domquery-com/domquery)
 
 웹앱 개발의 모든 기능을 하나의 통합 생태계로 제공하는 현대적인 JavaScript 라이브러리입니다.
 (A modern JavaScript library that provides all the features needed for web app development in one unified ecosystem.)
@@ -253,3 +253,4 @@ This software is based on DomQuery (Copyright (c) 2024 Byeonghee Gong & Taeyoon 
 The original is distributed under the MIT License.
 
 ```
+
