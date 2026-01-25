@@ -1,0 +1,1807 @@
+$.fn.animate_interpolateColor = function(b, c, d) {
+    function l(p) {
+        var r = document.createElement("canvas");
+        r.width = r.height = 1;
+        r = r.getContext("2d");
+        r.fillStyle = p;
+        r.fillRect(0, 0, 1, 1);
+        const [n, z, u] = r.getImageData(0, 0, 1, 1).data;
+        return [n, z, u]
+    }
+    b = l(b);
+    const m = l(c);
+    c = b.map((p, r) => Math.round(p + d * (m[r] - p)));
+    return function(p, r, n) {
+        return "#" + [p, r, n].map(z => {
+            z = z.toString(16);
+            return 1 === z.length ? "0" + z : z
+        }).join("")
+    }(c[0], c[1], c[2])
+};
+
+function isGradient(b) {
+    return b && "string" === typeof b ? b.trim().startsWith("linear-gradient") || b.trim().startsWith("radial-gradient") || b.trim().startsWith("conic-gradient") : !1
+}
+
+function parseGradient(b) {
+    if (!isGradient(b)) return null;
+    var c = b.match(/(linear-gradient|radial-gradient|conic-gradient)\s*\(([^)]+)\)/);
+    if (!c) return null;
+    b = c[1];
+    var d = c[2].trim();
+    c = "180deg";
+    let l = [];
+    if ("linear-gradient" === b) {
+        const m = d.match(/^([\d.]+(?:deg|turn|rad|grad)?)\s*,/);
+        m ? (c = m[1], l = d.substring(m[0].length).split(",").map(p => p.trim())) : l = d.split(",").map(p => p.trim())
+    } else l = d.split(",").map(m => m.trim());
+    d = l.map(m => {
+        const p = m.trim().split(/\s+/),
+            r = p[0];
+        m = p[1] || (l.indexOf(m) === l.length - 1 ? "100%" :
+            0 === l.indexOf(m) ? "0%" : l.indexOf(m) / (l.length - 1) * 100 + "%");
+        return {
+            color: r,
+            position: m
+        }
+    });
+    return {
+        type: b,
+        angle: c,
+        stops: d
+    }
+}
+
+function interpolateGradient(b, c, d) {
+    b = parseGradient(b);
+    c = parseGradient(c);
+    if (!b || !c) return null;
+    var l = b.angle;
+    if ("linear-gradient" === b.type && "linear-gradient" === c.type) {
+        l = parseFloat(b.angle) || 180;
+        var m = parseFloat(c.angle) || 180;
+        l = l + (m - l) * d + "deg"
+    }
+    m = Math.max(b.stops.length, c.stops.length);
+    const p = [];
+    for (let u = 0; u < m; u++) {
+        var r = b.stops[Math.min(u, b.stops.length - 1)],
+            n = c.stops[Math.min(u, c.stops.length - 1)],
+            z = parseFloat(r.position) || u / (m - 1) * 100;
+        const B = parseFloat(n.position) || u / (m - 1) * 100;
+        z = z + (B - z) * d + "%";
+
+        function C(e) {
+            if (e.startsWith("#")) {
+                var x = e.substring(1);
+                e = parseInt(x.substring(0, 2), 16);
+                var g = parseInt(x.substring(2, 4), 16);
+                x = parseInt(x.substring(4, 6), 16);
+                return [e, g, x, 1]
+            }
+            if (e.startsWith("rgba")) return (e = e.match(/[\d.]+/g)) ? e.map(Number) : [0, 0, 0, 1];
+            if (e.startsWith("rgb")) return (e = e.match(/\d+/g)) ? [...e.map(Number), 1] : [0, 0, 0, 1];
+            try {
+                g = document.createElement("canvas");
+                g.width = g.height = 1;
+                x = g.getContext("2d");
+                x.fillStyle = e;
+                x.fillRect(0, 0, 1, 1);
+                const [a, f, v] = x.getImageData(0, 0, 1, 1).data;
+                return [a, f, v, 1]
+            } catch (a) {
+                return [0,
+                    0, 0, 1
+                ]
+            }
+        }
+        r = C(r.color);
+        n = C(n.color);
+        p.push({
+            color: `rgba(${Math.round(r[0]+(n[0]-r[0])*d)},${Math.round(r[1]+(n[1]-r[1])*d)},${Math.round(r[2]+(n[2]-r[2])*d)},${r[3]+(n[3]-r[3])*d})`,
+            position: z
+        })
+    }
+    d = p.map(u => `${u.color} ${u.position}`).join(", ");
+    return `${b.type}(${"linear-gradient"===b.type?l+", ":""}${d})`
+}
+$.fn.animate_getInitialStyles = function(b, c) {
+    let d = {};
+    var l = b.parentElement || document.body;
+    let m = l.getBoundingClientRect(),
+        p = b.getBoundingClientRect(),
+        r = window.getComputedStyle(b),
+        n = "none" !== r.transform ? r.transform : "";
+    var z = window.getComputedStyle(l);
+    l = parseFloat(z.paddingLeft);
+    z = parseFloat(z.paddingTop);
+    let u = r.position,
+        B = [],
+        C = b;
+    for (; C.previousElementSibling && C.previousElementSibling.classList.contains(b.classList[0]);) B.unshift(C.previousElementSibling), C = C.previousElementSibling;
+    for (let e in c)
+        if ("left" ===
+            e || "right" === e) {
+            let x = 0;
+            c = parseFloat(r.marginLeft);
+            B.forEach(g => {
+                let a = window.getComputedStyle(g);
+                x += g.offsetWidth + parseFloat(a.marginLeft) + parseFloat(a.marginRight)
+            });
+            switch (u) {
+                case "static":
+                case "relative":
+                    d[e] = p.left - m.left - l - x - c;
+                    break;
+                case "absolute":
+                    c = "auto" !== r.left ? parseFloat(r.left) : p.left - m.left - l - x - c;
+                    d[e] = c;
+                    break;
+                case "fixed":
+                    d[e] = p.left - x - c
+            }
+        } else if ("top" === e || "bottom" === e) switch (c = parseFloat(r.marginTop), u) {
+        case "static":
+        case "relative":
+            d[e] = p.top - m.top - z - c;
+            "top" === e && (d[e] = p.top - m.top);
+            break;
+        case "absolute":
+            c = "auto" !== r.top ? parseFloat(r.top) : p.top - m.top - z - c;
+            "top" === e && (c = "auto" !== r.top ? parseFloat(r.top) : p.top - m.top);
+            d[e] = c;
+            break;
+        case "fixed":
+            d[e] = p.top - c, "top" === e && (d[e] = p.top)
+    } else "opacity" === e ? d[e] = parseFloat(r[e]) : "scale" === e || "scaleX" === e || "scaleY" === e ? "" === n ? (d.scaleX = 1, d.scaleY = 1, d.scale = 1) : (c = n.match(/matrix\(([^)]+)\)/)) ? (c = c[1].split(","), d.scaleX = parseFloat(c[0]), d.scaleY = parseFloat(c[3]), d.scale = parseFloat(c[0])) : (d.scaleX = 1, d.scaleY = 1, d.scale = 1) : "rotate" === e || "rotateX" ===
+        e || "rotateY" === e ? (c = b.getAttribute(`data-${e}`), null !== c ? (c = parseFloat(c), d[e] = isNaN(c) ? 0 : c) : "" === n ? d[e] = 0 : (c = n.match(new RegExp(`${e}\\(([^)]+)deg\\)`)), d[e] = c ? parseFloat(c[1]) : 0)) : "skewX" === e || "skewY" === e ? (c = b.getAttribute(`data-${e}`), null !== c ? (c = parseFloat(c), d[e] = isNaN(c) ? 0 : c) : "" === n ? d[e] = 0 : (c = n.match(new RegExp(`${e}\\(([^)]+)deg\\)`)), d[e] = c ? parseFloat(c[1]) : 0)) : "fontSize" === e ? (c = r[e], d[e] = parseFloat(c), d[e + "Unit"] = c.replace(d[e], "")) : d[e] = parseFloat(r[e]);
+    return d
+};
+$.fn.animate_updateStyles = function(b, c, d, l) {
+    var m = b.style.transform || "";
+    let p = {
+        scaleX: l.scaleX || 1,
+        scaleY: l.scaleY || 1,
+        rotate: l.rotate || 0,
+        rotateX: l.rotateX || 0,
+        rotateY: l.rotateY || 0,
+        skewX: l.skewX || 0,
+        skewY: l.skewY || 0
+    };
+    "left" === c || "top" === c ? b.style[c] = d + "px" : "right" === c ? b.style.left = d + "px" : "bottom" === c ? b.style.top = d + "px" : "opacity" === c ? b.style.opacity = d : "scale" === c ? (p.scaleX = d, p.scaleY = d) : "scaleX" === c || "scaleY" === c ? p[c] = d : "rotate" === c || "rotateX" === c || "rotateY" === c ? (d = parseFloat(d), l = b.getAttribute(`data-${c}`) ||
+        "0", l = parseFloat(l), p[c] = l + d) : "skewX" === c || "skewY" === c ? (d = parseFloat(d), l = b.getAttribute(`data-${c}`) || "0", l = parseFloat(l), p[c] = l + d) : "fontSize" === c ? b.style.fontSize = d + l[c + "Unit"] : "background" === c && (c = b.getAttribute("data-initial-background") || "rgba(0,0,0,0)", c = this.interpolateBackground(c, d, b.style.opacity), b.style.background = c);
+    m.includes("scale(") && (c = m.match(/scale\(([^)]+)\)/)) && (c = c[1].split(","), p.scaleX = parseFloat(c[0]), p.scaleY = parseFloat(c[1]));
+    m.includes("rotate(") && (c = m.match(/rotate\(([^)]+)deg\)/)) &&
+        (p.rotate = parseFloat(c[1]));
+    m.includes("rotateX(") && (c = m.match(/rotateX\(([^)]+)deg\)/)) && (p.rotateX = parseFloat(c[1]));
+    m.includes("rotateY(") && (c = m.match(/rotateY\(([^)]+)deg\)/)) && (p.rotateY = parseFloat(c[1]));
+    m.includes("skewX(") && (c = m.match(/skewX\(([^)]+)deg\)/)) && (p.skewX = parseFloat(c[1]));
+    m.includes("skewY(") && (m = m.match(/skewY\(([^)]+)deg\)/)) && (p.skewY = parseFloat(m[1]));
+    m = `scale(${p.scaleX}, ${p.scaleY}) rotate(${p.rotate}deg) rotateX(${p.rotateX}deg) rotateY(${p.rotateY}deg) skewX(${p.skewX}deg) skewY(${p.skewY}deg)`;
+    b.style.transform = m.trim()
+};
+$.fn.animate_calculateFinalValue = function(b, c, d, l, m, p, r, n, z, u) {
+    function B(f, v) {
+        let [D, y] = f.split(",");
+        f = parseFloat(D);
+        D.endsWith("%") && (f = parseFloat(D) / 100 * v);
+        void 0 !== y && (f += parseFloat(y));
+        return f
+    }
+
+    function C(f, v, D, y) {
+        if ("string" === typeof f) {
+            if (f.startsWith("+=")) {
+                if (f.endsWith("%")) return f = parseFloat(f.slice(2, -1)), v + f / 100 * y;
+                y = parseFloat(f.slice(2));
+                return v + y
+            }
+            if (f.startsWith("-=")) {
+                if (f.endsWith("%")) return f = parseFloat(f.slice(2, -1)), v - f / 100 * y;
+                y = parseFloat(f.slice(2));
+                return v - y
+            }
+            if (f.startsWith("+")) {
+                if (f.endsWith("%")) return y *=
+                    parseFloat(f.slice(1, -1)) / 100, v + y;
+                y = parseFloat(f.slice(1));
+                return v + y
+            }
+            if (f.startsWith("-")) {
+                if (f.endsWith("%")) return y *= parseFloat(f.slice(1, -1)) / 100, v - y;
+                y = parseFloat(f.slice(1));
+                return v - y
+            }
+        }
+        return parseFloat(f)
+    }
+    let e = c[b];
+    var x = parseFloat(e),
+        g = u.offsetParent === document.body || u.offsetParent === document.documentElement;
+    x = window.innerWidth;
+    let a = window.innerHeight;
+    x = g ? x : l.width;
+    g = g ? a : l.height;
+    "left" === b ? x = "50%" === c[b] ? (x - p) / 2 : "string" !== typeof e || !e.endsWith("%") || e.startsWith("+") || e.startsWith("-") ?
+        "string" === typeof e && e.includes(",") ? B(e, x) : "string" === typeof e && (e.startsWith("+") || e.startsWith("-") || e.startsWith("+=") || e.startsWith("-=")) ? C(e, d[b], x, m.width) : parseFloat(c[b]) : parseFloat(e) / 100 * x : "right" === b ? (x = "50%" === c[b] ? (x - p) / 2 : "string" !== typeof e || !e.endsWith("%") || e.startsWith("+") || e.startsWith("-") ? "string" === typeof e && e.includes(",") ? x - B(e, x) - m.width : "string" === typeof e && (e.startsWith("+") || e.startsWith("-") || e.startsWith("+=") || e.startsWith("-=")) ? C(e, d[b], x, m.width) : x - m.width - parseFloat(c[b]) :
+            x - parseFloat(e) / 100 * x - m.width, c.width && (x = "string" === typeof c.width && c.width.endsWith("px") ? x - (Math.abs(parseFloat(c.width)) - p + n) : x - parseFloat(c.width))) : "top" === b ? x = "50%" === c[b] ? (g - r) / 2 : "string" !== typeof e || !e.endsWith("%") || e.startsWith("+") || e.startsWith("-") ? "string" === typeof e && e.includes(",") ? B(e, g) : "string" === typeof e && (e.startsWith("+") || e.startsWith("-") || e.startsWith("+=") || e.startsWith("-=")) ? C(e, d[b], g, m.height) : parseFloat(c[b]) : parseFloat(e) / 100 * g : "bottom" === b ? (x = "50%" === c[b] ? (g - r) / 2 :
+            "string" !== typeof e || !e.endsWith("%") || e.startsWith("+") || e.startsWith("-") ? "string" === typeof e && e.includes(",") ? g - B(e, g) - m.height : "string" === typeof e && (e.startsWith("+") || e.startsWith("-") || e.startsWith("+=") || e.startsWith("-=")) ? C(e, d[b], g, m.height) : g - m.height - parseFloat(c[b]) : g - parseFloat(e) / 100 * g - m.height, c.height && (x = "string" === typeof c.height && c.height.endsWith("px") ? x - (Math.abs(parseFloat(c.height)) - r + z) : x - parseFloat(c.height))) : "width" === b || "height" === b ? (m = "width" === b ? m.width : m.height, x = "string" !==
+            typeof e || !e.endsWith("%") || e.startsWith("+") || e.startsWith("-") || e.startsWith("+=") || e.startsWith("-=") ? "string" === typeof e && e.endsWith("px") ? Math.abs(parseFloat(e)) : "string" === typeof e && (e.startsWith("+=") || e.startsWith("-=") || e.startsWith("+") || e.startsWith("-")) ? C(e, d[b], x, m) : d[b] + parseFloat(e) : ("width" === b ? l.width : l.height) * parseFloat(e) / 100) : "opacity" === b ? x = parseFloat(c[b]) : "scale" === b || "scaleX" === b || "scaleY" === b ? x = parseFloat(c[b]) : "rotate" === b || "rotateX" === b || "rotateY" === b ? x = "string" === typeof e &&
+        (e.startsWith("+") || e.startsWith("-") || e.startsWith("+=") || e.startsWith("-=")) ? C(e, d[b] || 0, 0, 0) : parseFloat(c[b]) : "skewX" === b || "skewY" === b ? x = "string" === typeof e && (e.startsWith("+") || e.startsWith("-") || e.startsWith("+=") || e.startsWith("-=")) ? C(e, d[b] || 0, 0, 0) : parseFloat(c[b]) : "fontSize" === b ? (d = c[b].match(/([\d.]+)(\D*)/), b = parseFloat(d[1]), d = d[2] || "px", "em" === d ? (d = parseFloat(window.getComputedStyle(document.documentElement).fontSize), b *= d) : "pt" === d && (b *= 96 / 72), x = b) : "background" === b ? (x = c[b], u.setAttribute("data-initial-background",
+            getComputedStyle(u).background)) : x = parseFloat(c[b]);
+    window.addEventListener("resize", function() {
+        if (u && document.contains(u)) {
+            var f = u.offsetParent === document.body || u.offsetParent === document.documentElement ? {
+                width: window.innerWidth,
+                height: window.innerHeight
+            } : u.parentElement ? u.parentElement.getBoundingClientRect() : null;
+            if (f) {
+                var v = u.getBoundingClientRect(),
+                    D = u.style.left,
+                    y = u.style.right,
+                    Z = u.style.top,
+                    V = u.style.bottom;
+                for (let L in c) {
+                    let Q;
+                    if ("left" === L || "right" === L) Q = "50%" === c[L] ? (f.width - v.width) / 2 :
+                        "string" === typeof c[L] && c[L].endsWith("%") ? parseFloat(c[L]) / 100 * f.width : parseFloat(c[L]), "left" === L && "auto" !== D ? (u.style.left = `${Q}px`, u.style.right = "auto") : "right" === L && "auto" !== y && (u.style.right = `${Q}px`, u.style.left = "auto");
+                    else if ("top" === L || "bottom" === L) Q = "50%" === c[L] ? (f.height - v.height) / 2 : "string" === typeof c[L] && c[L].endsWith("%") ? parseFloat(c[L]) / 100 * f.height : parseFloat(c[L]), "top" === L && "auto" !== Z ? (u.style.top = `${Q}px`, u.style.bottom = "auto") : "bottom" === L && "auto" !== V && (u.style.bottom = `${Q}px`,
+                        u.style.top = "auto")
+                }
+                u.offsetHeight
+            }
+        }
+    });
+    return x
+};
+$.fn._animate1 = function(b, c, d, l) {
+    function m(n) {
+        if ("number" === typeof n) return {
+            top: n,
+            right: n,
+            bottom: n,
+            left: n
+        };
+        n = n.toString().trim().split(/\s+/);
+        switch (n.length) {
+            case 1:
+                return {
+                    top: n[0], right: n[0], bottom: n[0], left: n[0]
+                };
+            case 2:
+                return {
+                    top: n[0], right: n[1], bottom: n[0], left: n[1]
+                };
+            case 3:
+                return {
+                    top: n[0], right: n[1], bottom: n[2], left: n[1]
+                };
+            case 4:
+                return {
+                    top: n[0], right: n[1], bottom: n[2], left: n[3]
+                };
+            default:
+                return null
+        }
+    }
+
+    function p(n) {
+        if ("number" === typeof n) return {
+            value: n,
+            unit: "px"
+        };
+        const z = String(n).match(/^(-?\d*\.?\d+)(%|px|em|rem|vh|vw)$/);
+        return z ? {
+            value: parseFloat(z[1]),
+            unit: z[2]
+        } : {
+            value: parseFloat(n),
+            unit: "px"
+        }
+    }
+
+    function r(n, z, u, B) {
+        return (z = u.parentElement) ? B.toLowerCase().includes("top") || B.toLowerCase().includes("bottom") ? parseFloat(n) / 100 * z.clientHeight : parseFloat(n) / 100 * z.clientWidth : n
+    }
+    this._Queue = this._Queue.then(() => new Promise((n, z) => {
+        let u = this,
+            B = this.elements,
+            C = [];
+        if (1 === Object.keys(b).length && ("scrollTop" in b || "scrollLeft" in b)) {
+            let a;
+            "scrollTop" in b ? a = new Promise(f => {
+                    this.scrollTop(b.scrollTop, c, f)
+                }) : "scrollLeft" in b &&
+                (a = new Promise(f => {
+                    this.scrollLeft(b.scrollLeft, c, f)
+                }));
+            a.then(() => {
+                d && "function" === typeof d && d.call(this);
+                d && d.always && d.always.call(this, this.elements);
+                n()
+            }).catch(z)
+        } else {
+            if ("scrollTop" in b || "scrollLeft" in b) {
+                let a;
+                "scrollTop" in b ? (a = new Promise(f => {
+                    this.scrollTop(b.scrollTop, c, f)
+                }), delete b.scrollTop) : "scrollLeft" in b && (a = new Promise(f => {
+                    this.scrollLeft(b.scrollLeft, c, f)
+                }), delete b.scrollLeft);
+                C.push(a)
+            }
+            "slow" === c && (c = 500);
+            var e = () => d && "function" === typeof d.condition ? B.every(a => d.condition(a)) :
+                !0;
+            if (!e()) return n(), this;
+            if ("finish" === l) return B.forEach(a => {
+                a.currentAnimationFrame && (cancelAnimationFrame(a.currentAnimationFrame), delete a.currentAnimationFrame)
+            }), B.forEach(a => {
+                for (let f in b) f in a.style && (a.style[f] = b[f]);
+                a.removeAttribute("data-last-animation-options")
+            }), d && "function" === typeof d && d.call(this), d && d.done && d.done.call(this, B), n(), this;
+            l && B.forEach(a => {
+                a.currentAnimationFrame && (cancelAnimationFrame(a.currentAnimationFrame), delete a.currentAnimationFrame)
+            });
+            var x = "scale scaleX scaleY scaleTL scaleTR scaleBL scaleBR scaleTC scaleBC scaleC scaleLC scaleRC".split(" ");
+            x.some(a => a in b);
+            var g = b.scaleDirection || "scale";
+            b.scaleDirection = g;
+            C = B.map(a => {
+                const f = window.getComputedStyle(a),
+                    v = "none" === f.display || "hidden" === f.visibility || 0 === parseFloat(f.opacity);
+                var D = !1;
+                v || (D = !0);
+                return new Promise((y, Z) => {
+                    function V() {
+                        const k = a.getAttribute("data-origScale");
+                        if (/^scale(TL|TR|BL|BR|TC|BC|C|LC|RC)?$/.test(k)) {
+                            b.transformOrigin = k.replace("scale", "").replace(/([A-Z])/g, " $1").toLowerCase().trim().replace(/\s+/g, " ");
+                            switch (k) {
+                                case "scaleTC":
+                                    b.transformOrigin = "top center";
+                                    break;
+                                case "scaleBC":
+                                    b.transformOrigin = "bottom center";
+                                    break;
+                                case "scaleC":
+                                    b.transformOrigin = "center center";
+                                    break;
+                                case "scaleLC":
+                                    b.transformOrigin = "left center";
+                                    break;
+                                case "scaleRC":
+                                    b.transformOrigin = "right center"
+                            }
+                            b.scale = 1
+                        }
+                    }
+                    if (!a.isAnimating || b.isClicking || b.allowMultiple) {
+                        u.elementData.has(a) || u.elementData.set(a, {
+                            startCss: null,
+                            currentAnimation: null
+                        });
+                        var L = u.elementData.get(a);
+                        if (x.includes(g))
+                            if ("scale" === g) L.hasSetScaleOrigin ? b.transformOrigin = b.transformOrigin || "center center" : (b.transformOrigin =
+                                "center center", L.hasSetScaleOrigin = !0);
+                            else {
+                                switch (g) {
+                                    case "scaleTL":
+                                        var Q = "top left";
+                                        break;
+                                    case "scaleTR":
+                                        Q = "top right";
+                                        break;
+                                    case "scaleBL":
+                                        Q = "bottom left";
+                                        break;
+                                    case "scaleBR":
+                                        Q = "bottom right";
+                                        break;
+                                    case "scaleTC":
+                                        Q = "top center";
+                                        break;
+                                    case "scaleBC":
+                                        Q = "bottom center";
+                                        break;
+                                    case "scaleC":
+                                        Q = "center center";
+                                        break;
+                                    case "scaleLC":
+                                        Q = "left center";
+                                        break;
+                                    case "scaleRC":
+                                        Q = "right center"
+                                }
+                                a.setAttribute("data-origScale", g);
+                                b.transformOrigin = Q
+                            } Q = 1 === Object.keys(b).length && "opacity" in b;
+                        L = a.hasAttribute("data-origScale");
+                        if (Q && !v) {
+                            let k = null;
+                            const pa = parseFloat(f.opacity),
+                                R = parseFloat(b.opacity);
+
+                            function P(da) {
+                                k || (k = da);
+                                da = Math.min((da - k) / c, 1);
+                                a.style.opacity = pa + (R - pa) * da;
+                                1 > da ? window.requestAnimationFrame(P) : (d && d.done && d.done.call(u, a), y())
+                            }
+                            d && d.start && d.start.call(u, a);
+                            window.requestAnimationFrame(P)
+                        } else {
+                            if (Q && (v || L)) L ? V() : (a.style.display = getOriginalDisplayValue(a), a.style.visibility = "visible", a.style.opacity = 0, b.opacity = parseFloat(b.opacity));
+                            else if (!b.transformOrigin && !Q && (v || L) && !1 !== b.appear) {
+                                const {
+                                    scaleTL: k,
+                                    scaleTR: pa,
+                                    scaleBL: R,
+                                    scaleBR: P,
+                                    scale: da
+                                } = b;
+                                Q = [k, pa, R, P, da].some(za => 0 === za) ? 0 : 1;
+                                const qa = b.scaleTL || b.scaleTR || b.scaleBL || b.scaleBR || b.scale ? 1 : 0;
+                                if (0 !== Q) {
+                                    a.style.display = getOriginalDisplayValue(a);
+                                    a.style.visibility = "visible";
+                                    if (0 === parseFloat(f.opacity) || b.appear) a.style.opacity = 0, b.opacity = void 0 !== b.opacity ? b.opacity : 1;
+                                    L && qa ? V() : qa ? V() : (void 0 === b.scale && void 0 === b.scaleX && (b.scaleX = parseFloat(a.getAttribute("data-scaleX") || "1")), void 0 === b.scale && void 0 === b.scaleY && (b.scaleY = parseFloat(a.getAttribute("data-scaleY") ||
+                                        "1")))
+                                }
+                            }!0 === b.alpha && (L = parseFloat(window.getComputedStyle(a).opacity), b.opacity = 0 < L ? 0 : 1);
+                            void 0 !== b.scaleTL ? (b.transformOrigin = "top left", b.scale = b.scaleTL, a.setAttribute("data-origScale", "scaleTL")) : void 0 !== b.scaleTR ? (b.transformOrigin = "top right", b.scale = b.scaleTR, a.setAttribute("data-origScale", "scaleTR")) : void 0 !== b.scaleBL ? (b.transformOrigin = "bottom left", b.scale = b.scaleBL, a.setAttribute("data-origScale", "scaleBL")) : void 0 !== b.scaleBR ? (b.transformOrigin = "bottom right", b.scale = b.scaleBR, a.setAttribute("data-origScale",
+                                "scaleBR")) : void 0 !== b.scale || void 0 !== b.scaleX || void 0 !== b.scaleY ? a.setAttribute("data-origScale", "scale") : void 0 !== b.scaleTC ? (b.transformOrigin = "top center", b.scale = b.scaleTC, a.setAttribute("data-origScale", "scaleTC")) : void 0 !== b.scaleBC ? (b.transformOrigin = "bottom center", b.scale = b.scaleBC, a.setAttribute("data-origScale", "scaleBC")) : void 0 !== b.scaleC ? (b.transformOrigin = "center center", b.scale = b.scaleC, a.setAttribute("data-origScale", "scaleC")) : void 0 !== b.scaleLC ? (b.transformOrigin = "left center",
+                                b.scale = b.scaleLC, a.setAttribute("data-origScale", "scaleLC")) : void 0 !== b.scaleRC && (b.transformOrigin = "right center", b.scale = b.scaleRC, a.setAttribute("data-origScale", "scaleRC"));
+                            b.fadeIn ? (b.appear = !0, delete b.fadeIn) : b.fadeOut && (b.appear = !1, delete b.fadeOut);
+                            x.forEach(k => {
+                                0 === b[k] && (b[k] = 1E-5)
+                            });
+                            (function(k, pa, R, P, da) {
+                                function qa(t, q) {
+                                    for (let I in k)
+                                        if (["rotate", "rotateX", "rotateY", "skewX", "skewY"].includes(I))["rotate", "rotateX", "rotateY"].includes(I) && "true" === a.getAttribute(`data-${I}-was-zero`) ?
+                                            (a.setAttribute(`data-${I}`, "0"), a.setAttribute(`data-start-${I}`, "0"), a.removeAttribute(`data-${I}-was-zero`)) : (q = parseFloat(a.getAttribute(`data-start-${I}`) || "0"), a.setAttribute(`data-${I}`, q));
+                                        else if (["scale", "scaleX", "scaleY"].includes(I)) {
+                                        q = void 0 !== k.scaleX ? parseFloat(k.scaleX) : void 0 !== k.scale ? parseFloat(k.scale) : parseFloat(a.getAttribute("data-scaleX") || "1");
+                                        let J = void 0 !== k.scaleY ? parseFloat(k.scaleY) : void 0 !== k.scale ? parseFloat(k.scale) : parseFloat(a.getAttribute("data-scaleY") || "1");
+                                        a.setAttribute("data-scaleX",
+                                            q);
+                                        a.setAttribute("data-scaleY", J)
+                                    } else "fontSize" === I ? a.setAttribute("data-fontSize", k[I]) : "width" === I || "height" === I ? a.setAttribute(`data-${I}`, k[I]) : "borderRadius" === I ? a.setAttribute("data-borderRadius", k[I]) : "backgroundColor" === I && a.setAttribute("data-backgroundColor", k[I]);
+                                    !1 === k.appear && (a.style.display = k.display ? k.display : "none");
+                                    a.style.willChange = "auto";
+                                    a.isAnimating = !1;
+                                    R && R.done && R.done.call(u, a);
+                                    t()
+                                }
+
+                                function za(t, q, I) {
+                                    if (t.transform && (t = t.transform.match(/translate\(([-\d.]+(?:px|%|vw|vh)?\s*,\s*[-\d.]+(?:px|%|vw|vh)?)\)/))) {
+                                        const [J,
+                                            ra
+                                        ] = t[1].split(",").map(ma => ma.trim());
+                                        t = parseFloat(a.getAttribute("data-initial-transform-x")) || 0;
+                                        const ja = parseFloat(a.getAttribute("data-initial-transform-y")) || 0,
+                                            ka = parseFloat(J) || 0,
+                                            la = parseFloat(ra) || 0;
+                                        I += ` translate(${t+(ka-t)*q}px, ${ja+(la-ja)*q}px)`;
+                                        1 === q && (a.setAttribute("data-initial-transform-x", ka), a.setAttribute("data-initial-transform-y", la))
+                                    }
+                                    return I
+                                }
+
+                                function na(t) {
+                                    if (e()) {
+                                        if (0 < wa) {
+                                            Aa || (Aa = t);
+                                            if (t - Aa < wa) {
+                                                a.currentAnimationFrame = requestAnimationFrame(na);
+                                                return
+                                            }
+                                            S || (S = t, wa = 0)
+                                        }
+                                        S || (S =
+                                            t);
+                                        T && (S = t - W, T = !1);
+                                        W = t - S;
+                                        X = Math.min((W + fa) / pa, 1);
+                                        t = k.easing || "linear";
+                                        var q = "function" === typeof t ? t(X) : u._anieasing(0, 1, X, t);
+                                        R && R.progress && R.progress.call(u, a, X, q, k);
+                                        R && R.step && R.step.call(u, a, X, q, k);
+                                        for (let G in k)
+                                            if ("background" === G || "background1" === G || "background2" === G || "background3" === G) "background" === G || "background1" === G ? (isGradient(Ea) || isGradient(Ga) ? (t = interpolateGradient(Ga, Ea, X), a.style.background = t ? t : .5 > X ? Ga : Ea) : (t = window.getComputedStyle(a).backgroundColor, t = u.interpolateBackground.call(u,
+                                                t, Ea, X), a.style.background = t), a.style.opacity = 1) : "background2" === G ? .5 >= X ? (t = 1 - 1 * X, a.style.background = Ga, a.style.opacity = t) : Ha ? a.style.opacity = .5 + (X - .5) : (a.style.background = Ea, a.style.opacity = .5, Ha = !0) : "background3" === G && (Ha ? a.style.opacity = .5 + .5 * X : (a.style.background = Ea, a.style.opacity = .5, Ha = !0), a.style.opacity = 1);
+                                            else if ("left top right bottom fontSize width height opacity borderRadius backgroundColor color path".split(" ").includes(G)) {
+                                            t = U[G];
+                                            var I = u.animate_calculateFinalValue(G, k, U, Fa, h, F, H, A,
+                                                w, a);
+                                            t += (I - t) * q;
+                                            if ("fontSize" === G) a.style.fontSize = `${N+(M-N)*q}px`;
+                                            else if ("width" === G) I = t - F, a.style.width = `${t}px`, a.style.right = `${U.right-I/2}px`;
+                                            else if ("height" === G) I = t - H, a.style.height = `${t}px`, a.style.bottom = `${U.bottom-I/2}px`;
+                                            else if ("borderRadius" === G) a.style.borderRadius = `${t}px`;
+                                            else if ("color" === G) t = u.animate_interpolateColor(U.color, k.color, q), a.style.color = t;
+                                            else if ("backgroundColor" === G) a.style.backgroundColor = u.animate_interpolateColor(U.backgroundColor || "rgba(0,0,0,0)", k.backgroundColor,
+                                                q);
+                                            else if ("path" === G) {
+                                                if (t = document.querySelector(k.path)) I = t.getTotalLength(), t = t.getPointAtLength(I * q), a.style.left = `${t.x}px`, a.style.top = `${t.y}px`
+                                            } else u.animate_updateStyles(a, G, t, U)
+                                        } else if ("margin" === G || "padding" === G) {
+                                            if (!a.hasAttribute("data-start-" + G)) {
+                                                const Ba = {};
+                                                ["Top", "Right", "Bottom", "Left"].forEach(oa => {
+                                                    const Ca = `${G}${oa}`;
+                                                    Ba[oa.toLowerCase()] = parseFloat(getComputedStyle(a)[Ca])
+                                                });
+                                                a.setAttribute("data-start-" + G, JSON.stringify(Ba))
+                                            }
+                                            const sa = m(k[G]),
+                                                Da = JSON.parse(a.getAttribute("data-start-" +
+                                                    G));
+                                            if (sa) {
+                                                const Ba = G;
+                                                ["Top", "Right", "Bottom", "Left"].forEach(oa => {
+                                                    const Ca = `${Ba}${oa}`;
+                                                    var ta = Da[oa.toLowerCase()];
+                                                    const {
+                                                        value: Ia,
+                                                        unit: Ja
+                                                    } = p(sa[oa.toLowerCase()]);
+                                                    "%" === Ja ? (oa = r(Ia, Ca, a, Ca), ta += (oa - ta) * q) : ta += (Ia - ta) * q;
+                                                    a.style[Ca] = `${ta}${Ja||"px"}`
+                                                })
+                                            }
+                                            1 <= X && a.removeAttribute("data-start-" + G)
+                                        } else if ("marginTop marginRight marginBottom marginLeft paddingTop paddingRight paddingBottom paddingLeft".split(" ").includes(G)) {
+                                            a.hasAttribute("data-start-" + G) || (t = getComputedStyle(a)[G], t = parseFloat(t),
+                                                a.setAttribute("data-start-" + G, t));
+                                            t = parseFloat(a.getAttribute("data-start-" + G));
+                                            const {
+                                                value: sa,
+                                                unit: Da
+                                            } = p(k[G]);
+                                            "%" === Da ? (I = r(sa, G, a, G), t += (I - t) * q) : t += (sa - t) * q;
+                                            a.style[G] = `${t}${Da||"px"}`;
+                                            1 <= X && a.removeAttribute("data-start-" + G)
+                                        }
+                                        t = void 0 !== k.scaleX ? parseFloat(k.scaleX) : void 0 !== k.scale ? parseFloat(k.scale) : K;
+                                        I = void 0 !== k.scaleY ? parseFloat(k.scaleY) : void 0 !== k.scale ? parseFloat(k.scale) : O;
+                                        t = K + (t - K) * q;
+                                        I = O + (I - O) * q;
+                                        var J = f.position,
+                                            ra = parseFloat(a.getAttribute("data-start-rotate")) || 0,
+                                            ja = void 0 !== k.rotate ?
+                                            parseFloat(k.rotate) : ra;
+                                        ra += (ja - ra) * q;
+                                        ja = parseFloat(a.getAttribute("data-start-rotateX")) || 0;
+                                        var ka = void 0 !== k.rotateX ? parseFloat(k.rotateX) : ja;
+                                        ja += (ka - ja) * q;
+                                        ka = parseFloat(a.getAttribute("data-start-rotateY")) || 0;
+                                        var la = void 0 !== k.rotateY ? parseFloat(k.rotateY) : ka;
+                                        ka += (la - ka) * q;
+                                        la = parseFloat(a.getAttribute("data-start-skewX")) || 0;
+                                        var ma = void 0 !== k.skewX ? parseFloat(k.skewX) : la;
+                                        la += (ma - la) * q;
+                                        ma = parseFloat(a.getAttribute("data-start-skewY")) || 0;
+                                        var ua = void 0 !== k.skewY ? parseFloat(k.skewY) : ma;
+                                        ma += (ua - ma) *
+                                            q;
+                                        if (J && "static" !== J && "relative" !== J || !a.getAttribute("data-origScale")) a.style.transformOrigin = k.transformOrigin ? k.transformOrigin : "50% 50%", J = za(k, q, `scale(${t}, ${I})`), a.style.transform = J + ` rotate(${ra}deg)` + ` rotateX(${ja}deg)` + ` rotateY(${ka}deg)` + ` skewX(${la}deg)` + ` skewY(${ma}deg)`;
+                                        else {
+                                            if (!a.hasAttribute("data-original-width"))
+                                                if (J = (Ba, oa, Ca) => {
+                                                        Ba = parseFloat(f.paddingLeft) || 0;
+                                                        oa = parseFloat(f.paddingRight) || 0;
+                                                        var ta = parseFloat(f.paddingTop) || 0;
+                                                        const Ia = parseFloat(f.paddingBottom) || 0;
+                                                        ta = a.clientHeight -
+                                                            ta - Ia;
+                                                        a.setAttribute("data-original-width", a.clientWidth - Ba - oa);
+                                                        a.setAttribute("data-original-height", ta);
+                                                        a.setAttribute("data-original-margin-top", f.marginTop);
+                                                        a.setAttribute("data-original-margin-right", f.marginRight);
+                                                        a.setAttribute("data-original-margin-bottom", f.marginBottom);
+                                                        a.setAttribute("data-original-margin-left", f.marginLeft);
+                                                        a.setAttribute("data-original-font-size", f.fontSize);
+                                                        a.setAttribute("data-start-scale", Ca);
+                                                        a.style.overflow = "hidden"
+                                                    }, D) {
+                                                    ua = a.clientWidth - (parseFloat(f.paddingLeft) ||
+                                                        0) - (parseFloat(f.paddingRight) || 0);
+                                                    var ha = a.clientHeight - (parseFloat(f.paddingTop) || 0) - (parseFloat(f.paddingBottom) || 0);
+                                                    J(ua, ha, "1");
+                                                    a.style.width = `${ua}px`;
+                                                    a.style.height = `${ha}px`
+                                                } else J(0, 0, "0"), a.style.width = "0px", a.style.height = "0px";
+                                            J = parseFloat(a.getAttribute("data-original-width"));
+                                            ua = parseFloat(a.getAttribute("data-original-height"));
+                                            ha = parseFloat(a.getAttribute("data-original-margin-top"));
+                                            parseFloat(a.getAttribute("data-original-margin-right"));
+                                            parseFloat(a.getAttribute("data-original-margin-bottom"));
+                                            const G = parseFloat(a.getAttribute("data-original-margin-left"));
+                                            var xa = parseFloat(a.getAttribute("data-original-font-size")),
+                                                ya = parseFloat(a.getAttribute("data-start-scale"));
+                                            let sa;
+                                            sa = void 0 !== k.scaleX ? k.scaleX : void 0 !== k.scaleY ? k.scaleY : k[a.getAttribute("data-origScale")] || 1;
+                                            ya += (sa - ya) * q;
+                                            const Da = J * ya;
+                                            var va = ua * ya;
+                                            a.style.width = `${Da}px`;
+                                            a.style.height = `${va}px`;
+                                            a.style.fontSize = `${xa*ya}px`;
+                                            xa = J - Da;
+                                            va = ua - va;
+                                            switch (a.getAttribute("data-origScale")) {
+                                                case "scaleTL":
+                                                    a.style.marginTop = `${ha}px`;
+                                                    a.style.marginLeft =
+                                                        `${G}px`;
+                                                    break;
+                                                case "scaleTR":
+                                                    a.style.marginTop = `${ha}px`;
+                                                    a.style.marginLeft = `${G+xa}px`;
+                                                    break;
+                                                case "scaleBL":
+                                                    a.style.marginTop = `${ha+va}px`;
+                                                    a.style.marginLeft = `${G}px`;
+                                                    break;
+                                                case "scaleBR":
+                                                    a.style.marginTop = `${ha+va}px`;
+                                                    a.style.marginLeft = `${G+xa}px`;
+                                                    break;
+                                                case "scaleTC":
+                                                    a.style.marginTop = `${ha}px`;
+                                                    a.style.marginLeft = `${G+xa/2}px`;
+                                                    break;
+                                                case "scaleBC":
+                                                    a.style.marginTop = `${ha+va}px`;
+                                                    a.style.marginLeft = `${G+xa/2}px`;
+                                                    break;
+                                                case "scaleC":
+                                                    a.style.marginTop = `${ha+va/2}px`;
+                                                    a.style.marginLeft = `${G+xa/2}px`;
+                                                    break;
+                                                case "scaleLC":
+                                                    a.style.marginTop = `${ha+va/2}px`;
+                                                    a.style.marginLeft = `${G}px`;
+                                                    break;
+                                                case "scaleRC":
+                                                    a.style.marginTop = `${ha+va/2}px`;
+                                                    a.style.marginLeft = `${G+xa}px`;
+                                                    break;
+                                                case "scale":
+                                                    void 0 !== k.scaleX ? (a.style.width = `${J*ya}px`, a.style.height = `${ua}px`) : (a.style.width = void 0 !== k.scaleY ? `${J}px` : `${J*ya}px`, a.style.height = `${ua*ya}px`), a.style.marginTop = `${ha}px`, a.style.marginLeft = `${G}px`, a.style.transformOrigin = "center center"
+                                            }
+                                            1 === q && a.setAttribute("data-start-scale", sa.toString());
+                                            a.style.transformOrigin =
+                                                k.transformOrigin ? k.transformOrigin : "50% 50%";
+                                            J = za(k, q, "");
+                                            0 !== ra && (J += ` rotate(${ra}deg)`);
+                                            0 !== ja && (J += ` rotateX(${ja}deg)`);
+                                            0 !== ka && (J += ` rotateY(${ka}deg)`);
+                                            0 !== la && (J += ` skewX(${la}deg)`);
+                                            0 !== ma && (J += ` skewY(${ma}deg)`);
+                                            a.style.transform = J.trim() || "none"
+                                        }
+                                        void 0 !== k.appear && (a.style.opacity = k.noOpacityAnimation || k.alphaOut ? k.appear ? 1 : void 0 !== aa ? aa : k.alphaOut : aa + ((k.appear ? 1 : 0) - aa) * (k.appear && 0 === aa || !k.appear && 1 === aa ? q * q * q * (q * (6 * q - 15) + 10) : q));
+                                        1 > X && !a.animationStopped ? a.currentAnimationFrame = window.requestAnimationFrame(na) :
+                                            (1 !== k.scale && 1 !== k.opacity || a.removeAttribute("data-origScale"), a.setAttribute("data-scaleX", t), a.setAttribute("data-scaleY", I), a.setAttribute("data-start-rotate", ra), a.setAttribute("data-start-rotateX", ja), a.setAttribute("data-start-rotateY", ka), a.setAttribute("data-start-skewX", la), a.setAttribute("data-start-skewY", ma), qa(P, da))
+                                    } else qa(P, da)
+                                }
+                                if (e()) {
+                                    var wa = k.delay || 0;
+                                    delete k.delay;
+                                    var Aa = null,
+                                        Y = !1,
+                                        ia = !1;
+                                    if (!0 === k.appear)
+                                        if ("none" !== window.getComputedStyle(a).display && "hidden" !== window.getComputedStyle(a).visibility &&
+                                            0 !== parseFloat(window.getComputedStyle(a).opacity)) ia = !0;
+                                        else if ("none" === window.getComputedStyle(a).display) {
+                                        Y = !0;
+                                        var ba = a.dataset.originalDisplay;
+                                        ba || (ba = window.getComputedStyle(a).display, "none" !== ba && "" !== ba && (a.dataset.originalDisplay = ba));
+                                        a.style.display = ba && "none" !== ba ? ba : "block"
+                                    }
+                                    ba = window.getComputedStyle(a).position;
+                                    a.style.position = ba && "static" !== ba ? k.position || ba : "static";
+                                    var U = u.animate_getInitialStyles(a, k),
+                                        Fa = (a.parentElement || document.body).getBoundingClientRect(),
+                                        h = a.getBoundingClientRect(),
+                                        F = h.width,
+                                        H = h.height;
+                                    Y && (a.style.display = "none");
+                                    void 0 !== k.color && (U.color = window.getComputedStyle(a).color);
+                                    var E = getComputedStyle(a),
+                                        A = 0,
+                                        w = 0;
+                                    k.height && (w = ["borderTopWidth", "borderBottomWidth", "paddingTop", "paddingBottom"].reduce((t, q) => t + parseFloat(E[q]), 0));
+                                    k.width && (A = ["borderLeftWidth", "borderRightWidth", "paddingLeft", "paddingRight"].reduce((t, q) => t + parseFloat(E[q]), 0));
+                                    var K = parseFloat(a.getAttribute("data-scaleX")) || 1,
+                                        O = parseFloat(a.getAttribute("data-scaleY")) || 1;
+                                    !v || void 0 === k.scale && void 0 ===
+                                        k.scaleX && void 0 === k.scaleY || (a.style.transform = "scale(0.00001)", Y = a.dataset.originalDisplay, Y || (Y = window.getComputedStyle(a).display, "none" !== Y && "" !== Y && (a.dataset.originalDisplay = Y)), a.style.display = Y && "none" !== Y ? Y : "block", a.style.visibility = "visible", O = K = 1E-5, a.dataset.isInitialized = "true");
+                                    ["rotate", "rotateX", "rotateY"].forEach(t => {
+                                        if (void 0 !== k[t] && !a.hasAttribute("data-start-" + t)) {
+                                            var q = a.getAttribute(`data-${t}`);
+                                            null !== q ? (q = parseFloat(q), q = isNaN(q) ? U[t] || 0 : q) : q = U[t] || 0;
+                                            a.setAttribute("data-start-" +
+                                                t, q)
+                                        }
+                                    });
+                                    ["skewX", "skewY"].forEach(t => {
+                                        if (void 0 !== k[t] && !a.hasAttribute("data-start-" + t)) {
+                                            var q = a.getAttribute(`data-${t}`);
+                                            null !== q ? (q = parseFloat(q), q = isNaN(q) ? U[t] || 0 : q) : q = U[t] || 0;
+                                            a.setAttribute("data-start-" + t, q)
+                                        }
+                                    });
+                                    var N = parseFloat(window.getComputedStyle(a).fontSize),
+                                        M = k.fontSize ? parseFloat(k.fontSize) : N;
+                                    if (k.fontSize && k.fontSize.endsWith("em")) {
+                                        Y = parseFloat(k.fontSize) || 1;
+                                        try {
+                                            var ea = a.parentElement || document.body;
+                                            var ca = ea ? parseFloat(window.getComputedStyle(ea).fontSize) || 16 : 16
+                                        } catch (t) {
+                                            console.warn("Error getting parent font size for em calculation:",
+                                                t), ca = 16
+                                        }
+                                        M = Y * ca
+                                    }
+                                    var aa = !0 === k.appear ? ia ? parseFloat(window.getComputedStyle(a).opacity) : 0 : !1 === k.appear ? 1 : parseFloat(window.getComputedStyle(a).opacity);
+                                    a.style.opacity = aa;
+                                    !0 === k.appear ? (a.style.display = getOriginalDisplayValue(a), a.style.visibility = "visible") : !1 === k.appear && (a.style.visibility = "visible");
+                                    a.style.willChange = "transform, left, top, right, bottom, font-size, width, height, opacity, border-radius, background-color";
+                                    var S = null,
+                                        W = 0,
+                                        fa = 0,
+                                        X = 0,
+                                        T = !1;
+                                    R && R.start && R.start.call(u, a);
+                                    var Ga = window.getComputedStyle(a).background,
+                                        Ea = k.background || k.background1 || k.background2 || k.background3,
+                                        Ha = !1;
+                                    a.hasAttribute("data-initial-transform") || (ca = window.getComputedStyle(a).transform, ea = ia = 0, ca && "none" !== ca && (ca = new DOMMatrix(ca), ia = ca.m41, ea = ca.m42), a.setAttribute("data-initial-transform-x", ia), a.setAttribute("data-initial-transform-y", ea));
+                                    ["rotate", "rotateX", "rotateY"].forEach(t => {
+                                        if (void 0 !== k[t]) {
+                                            var q = k[t];
+                                            let I = parseFloat(a.getAttribute(`data-${t}`) || "0");
+                                            if ("string" === typeof q && (q.startsWith("+") || q.startsWith("-") || q.startsWith("+=") ||
+                                                    q.startsWith("-="))) {
+                                                let J = 0;
+                                                q.startsWith("+=") ? J = parseFloat(q.slice(2)) || 0 : q.startsWith("-=") ? J = -parseFloat(q.slice(2)) || 0 : q.startsWith("+") ? J = parseFloat(q.slice(1)) || 0 : q.startsWith("-") && (J = -parseFloat(q.slice(1)) || 0);
+                                                k[t] = I + J
+                                            } else q = parseFloat(String(q).replace(/deg/gi, "")), isNaN(q) && (q = 0), 0 === q && 0 !== I ? (k[t] = 0, a.setAttribute(`data-${t}-was-zero`, "true")) : (k[t] = q, 0 !== q && a.removeAttribute(`data-${t}-was-zero`))
+                                        }
+                                    });
+                                    ["skewX", "skewY"].forEach(t => {
+                                        if (void 0 !== k[t]) {
+                                            var q = k[t];
+                                            let I = parseFloat(a.getAttribute(`data-${t}`) ||
+                                                "0");
+                                            if ("string" === typeof q && (q.startsWith("+") || q.startsWith("-") || q.startsWith("+=") || q.startsWith("-="))) {
+                                                let J = 0;
+                                                q.startsWith("+=") ? J = parseFloat(q.slice(2).replace(/deg/gi, "")) || 0 : q.startsWith("-=") ? J = -parseFloat(q.slice(2).replace(/deg/gi, "")) || 0 : q.startsWith("+") ? J = parseFloat(q.slice(1).replace(/deg/gi, "")) || 0 : q.startsWith("-") && (J = -parseFloat(q.slice(1).replace(/deg/gi, "")) || 0);
+                                                k[t] = I + J
+                                            } else q = parseFloat(String(q).replace(/deg/gi, "")), isNaN(q) && (q = 0), k[t] = q
+                                        }
+                                    });
+                                    a.currentAnimationFrame = requestAnimationFrame(na);
+                                    a.stop = function() {
+                                        a.currentAnimationFrame && !T && (window.cancelAnimationFrame(a.currentAnimationFrame), fa += W, T = !0, a.animationStopped = !0, R && R.fail && R.fail.call(u, a))
+                                    };
+                                    a.start = function() {
+                                        T && (T = !1, a.animationStopped = !1, S = null, window.requestAnimationFrame(na))
+                                    }
+                                } else qa(P, da)
+                            })(b, c, d, y, Z)
+                        }
+                    } else y()
+                })
+            });
+            Promise.all(C).then(() => {
+                "function" === typeof d && d.call(this, this.elements);
+                d && d.always && d.always.call(this, this.elements);
+                n()
+            }).catch(a => {
+                z(a)
+            })
+        }
+    }));
+    return this
+};
+$.fn._animate0 = function(b, c, d, l) {
+    try {
+        if (!this.data("queueId")) {
+            const v = Date.now(),
+                D = Math.random().toString(36).substr(2, 5);
+            this.data("queueId", `q_${v}_${D}`)
+        }
+        const r = this.data("queueId");
+        var m = this[0];
+        m.hasAttribute("data-is-stopnow") && m.removeAttribute("data-is-stopnow");
+        const n = window.getComputedStyle(m);
+        if (!this.fx[r] || !this.fx[r].length) {
+            m = !1;
+            var p = this.elements || [this[0]];
+            for (const v of p) {
+                const D = window.getComputedStyle(v);
+                if (!b.display || D.display !== b.display) {
+                    if (void 0 !== b.opacity) {
+                        const y =
+                            parseFloat(D.opacity);
+                        if (0 === b.opacity && 0 === y || 1 === b.opacity && 1 === y) continue
+                    }
+                    m = !0;
+                    break
+                }
+            }
+            if (!m) return this
+        }
+        if (this.fx[r] && this.fx[r].length) {
+            const v = JSON.stringify(this.fx[r][this.fx[r].length - 1].properties),
+                D = JSON.stringify(b);
+            if (v === D) return this
+        }
+        this.fx[r] || (this.fx[r] = []);
+        if (!this.data("initialState")) {
+            const v = {};
+            ["left", "top", "right", "bottom"].forEach(D => {
+                v[D] = n[D]
+            });
+            this.data("initialState", v)
+        }
+        let z;
+        p = {};
+        b.start && (p.start = b.start);
+        b.progress && (p.progress = b.progress);
+        b.step && (p.step = b.step);
+        b.done && (p.done = b.done);
+        b.complete && !b.done && (p.done = b.complete);
+        b.fail && (p.fail = b.fail);
+        b.always && (p.always = b.always);
+        "function" === typeof d ? z = d : d && "object" === typeof d && (z = d.done || d.complete || d, d.complete && !d.done && (d.done = d.complete), Object.assign(p, d));
+        const {
+            start: u,
+            progress: B,
+            step: C,
+            done: e,
+            complete: x,
+            fail: g,
+            always: a,
+            ...f
+        } = b;
+        this.fx[r].push({
+            type: "animate",
+            properties: f,
+            duration: c,
+            callback: z,
+            lifecycleCallbacks: p,
+            skipQueue: l,
+            completed: !1
+        });
+        1 === this.fx[r].length && this.dequeue();
+        return this
+    } catch (r) {
+        return this.selector &&
+            "string" === typeof this.selector ? this.selector.startsWith("text=") ? console.warn(`No elements found with text containing "${searchText}"`) : this.selector.startsWith("size[") ? console.warn(`No elements found matching size condition "${this.selector}"`) : this.selector.startsWith("#") ? console.warn(`No element found with ID "${this.selector.slice(1)}"`) : this.selector.startsWith(".") ? console.warn(`No elements found with class "${this.selector.slice(1)}"`) : console.warn(`No elements found matching selector "${this.selector}"`) :
+            console.warn("Animation initialization error:", r), d?.fail && d.fail.call(this, r), this
+    }
+};
+$.animate = function(b, c, d, l) {
+    return "object" === typeof c ? (b = {
+        ...b,
+        ...Object.keys(c).filter(m => "duration" !== m && "queue" !== m).reduce((m, p) => {
+            m[p] = c[p];
+            return m
+        }, {})
+    }, this._animate0(b, c.duration || 400, d, c.queue)) : this._animate0(b, c, d, l)
+};
+$.fn.animate = function() {
+    return $.animate.apply(this, arguments)
+};
+$.anitime = function(b, c) {
+    window._runningAnimations || (window._runningAnimations = new Map);
+    if (0 < this.anitimeRunning) return this;
+    if (!this.elements || 0 === this.elements.length) return console.warn("No elements found to run animation list."), c && c(), this;
+    const d = window._runningAnimations.get(this.selector);
+    d && d !== this && (d.elements.forEach(g => {
+        $(g).stop(!0, !0)
+    }), d._Queue = Promise.resolve(), d.fx && Object.keys(d.fx).forEach(g => {
+        d.fx[g] = []
+    }));
+    window._runningAnimations.set(this.selector, this);
+    window._elementOriginalStates ||
+        (window._elementOriginalStates = new Map);
+    const l = this,
+        m = this.elements.map(g => {
+            if (g.id) return g.id;
+            if (g.getAttribute("data-anitime-id")) return g.getAttribute("data-anitime-id");
+            const a = "anitime_" + Math.random().toString(36).substr(2, 9);
+            g.setAttribute("data-anitime-id", a);
+            return a
+        }),
+        p = m.join(","),
+        r = g => {
+            const a = document.createElement("div");
+            a.className = "anitime-virtual-parent";
+            a.style.cssText = "\n\t\t\tposition: absolute;\n\t\t\ttop: 0;\n\t\t\tleft: 0;\n\t\t\twidth: 100%;\n\t\t\theight: 100%;\n\t\t\topacity: 0;\n\t\t\tpointer-events: none;\n\t\t\tz-index: 1;\n\t\t";
+            var f = window.getComputedStyle(g);
+            const v = f.position,
+                D = f.zIndex;
+            f = f.transform;
+            g.style.position = "relative";
+            g.style.zIndex = "2";
+            g = g.getBoundingClientRect();
+            a._originalRect = {
+                top: g.top,
+                left: g.left,
+                width: g.width,
+                height: g.height,
+                position: v,
+                zIndex: D,
+                transform: "none" === f ? "" : f
+            };
+            return a
+        },
+        n = g => {
+            g = `step_${g}`;
+            if (this.animationDump[g]) return !1;
+            this.animationDump[g] = this.elements.map(a => {
+                var f = a.id || a.getAttribute("data-anitime-id");
+                const v = window.getComputedStyle(a);
+                let D = {};
+                for (let y of v) D[y] = v.getPropertyValue(y);
+                D.inlineStyles = a.style.cssText;
+                return {
+                    id: f,
+                    state: D,
+                    timestamp: Date.now()
+                }
+            });
+            return !0
+        };
+    var z = $(this.elements[0]);
+    z.data("isStopnow") && (0 === b ? "running" !== z.data("animationState") && this.start() : (this.stop(!0), this.start(), this.dequeue()));
+    if (0 === arguments.length) {
+        const g = [],
+            a = {
+                animate: this.animate,
+                delay: this.delay,
+                css: this.css,
+                hide: this.hide,
+                show: this.show
+            };
+        this.elements.forEach(f => {
+            f.id || f.getAttribute("data-anitime-id") || f.setAttribute("data-anitime-id", "anitime_" + Math.random().toString(36).substr(2,
+                9))
+        });
+        this.animate = function(f, v, D) {
+            g.push({
+                type: "animate",
+                properties: f,
+                duration: v,
+                callback: D,
+                args: arguments
+            });
+            this.animationChains[p] = g;
+            return this
+        };
+        this.css = function(f, v) {
+            g.push({
+                type: "css",
+                properties: f,
+                callback: v,
+                args: arguments
+            });
+            this.animationChains[p] = g;
+            return this
+        };
+        this.delay = function(f, v) {
+            g.push({
+                type: "delay",
+                delay: f,
+                callback: v,
+                args: arguments
+            });
+            this.animationChains[p] = g;
+            return this
+        };
+        this.hide = function(...f) {
+            g.push({
+                type: "hide",
+                callback: "function" === typeof f[f.length - 1] ? f[f.length - 1] : null,
+                args: f
+            });
+            this.animationChains[p] = g;
+            return this
+        };
+        this.show = function(...f) {
+            g.push({
+                type: "show",
+                callback: "function" === typeof f[f.length - 1] ? f[f.length - 1] : null,
+                args: f
+            });
+            this.animationChains[p] = g;
+            return this
+        };
+        this.end = function(f) {
+            Object.assign(this, a);
+            this.animationChains[p] = g;
+            m.forEach((v, D) => {
+                D = this.elements[D];
+                window._elementOriginalStates.has(v) || (D = D.cloneNode(!0), window._elementOriginalStates.set(v, [D]))
+            });
+            0 < arguments.length && this.anitime(f, c);
+            return this
+        };
+        return this
+    }
+    this.anitimeRunning = 1;
+    z = this.animationChains[p];
+    if (!z) return console.warn("No animation chain found for elements:", p), c && c(), this;
+    var u = (g => {
+        if (0 === g) return 0;
+        for (g = 10 * Math.floor(g / 10); 0 < g; g -= 10)
+            if (this.animationDump[`step_${g}`]) return g;
+        return 0
+    })(b);
+    let B = [];
+    if (!z.some(g => {
+            if (!["animate", "show", "hide"].includes(g.type)) return !1;
+            g = g.properties;
+            if (!g) return !1;
+            const a = ["left", "top", "right", "bottom"];
+            return Object.entries(g).some(([f, v]) => a.includes(f) ? "string" === typeof v && (v.includes("+=") || v.includes("-=") || /^[+-]\d/.test(v)) : !1)
+        }))
+        if (this.elements.forEach(g => {
+                $(g).css("opacity", "0", {
+                    async: !0
+                })
+            }), 0 < u) {
+            const g = this.animationDump[`step_${u}`];
+            this.elements.forEach((a, f) => {
+                var v = window._elementOriginalStates.get(m[f]);
+                v && v[0] && (v = v[0].cloneNode(!0), a.parentNode.replaceChild(v, a), this.elements[f] = v, v.style.cssText = g[f].state.inlineStyles, a = r(v), B.push(a), v.parentNode.insertBefore(a, v), a.appendChild(v))
+            })
+        } else this.elements.forEach(g => {
+            const a = r(g);
+            g.parentNode.insertBefore(a, g);
+            a.appendChild(g);
+            B.push(a)
+        }), this.elements.forEach((g, a) => {
+            var f = window._elementOriginalStates.get(m[a]);
+            f && f[0] && (f = f[0].cloneNode(!0), B[a].replaceChild(f, g), this.elements[a] = f)
+        });
+    var C = "q" + Date.now() + Math.random().toString(36).substr(2, 5);
+    l.data("queueId", C);
+    l.fx[C] = [];
+    let e = !1,
+        x = !1;
+    C = z.filter(g => "animate" === g.type || "hide" === g.type || "show" === g.type).pop();
+    C = z.lastIndexOf(C);
+    for (let g = u; g < z.length; g++) {
+        const a = z[g],
+            f = () => {
+                0 === (g + 1) % 10 && n(g + 1)
+            };
+        g !== b || e || l.queue(function(D) {
+            setTimeout(() => {
+                l.anitimeRunning = 0
+            }, 0);
+            B.forEach((y, Z) => {
+                Z = l.elements[Z];
+                const V = y._originalRect;
+                Z.style.position = V.position;
+                Z.style.zIndex =
+                    V.zIndex;
+                Z.style.transform = V.transform;
+                y.parentNode.insertBefore(Z, y);
+                y.remove();
+                $(Z).css("opacity", "1", {
+                    async: !0
+                })
+            });
+            e = !0;
+            f();
+            D()
+        });
+        const v = D => {
+            g < b || e || this.elements.forEach(y => {
+                $(y).css("opacity", "0", {
+                    async: !0
+                })
+            });
+            D()
+        };
+        if ("css" === a.type) l.queue(function(D) {
+            v(() => {
+                l.css(a.properties, {
+                    async: !0
+                });
+                a.callback && "function" === typeof a.callback && a.callback.call(l);
+                f();
+                D()
+            })
+        });
+        else if ("delay" === a.type) l.delay(g < b ? 1 : a.delay).queue(function(D) {
+            v(() => {
+                a.callback && "function" === typeof a.callback && a.callback.call(l);
+                f();
+                D()
+            })
+        });
+        else if ("animate" === a.type) l.animate(a.properties, g < b ? 1 : a.duration, g === C ? function() {
+            v(() => {
+                a.callback && "function" === typeof a.callback && a.callback.call(l);
+                f();
+                !x && c && (x = !0, c())
+            })
+        } : function() {
+            v(() => {
+                a.callback && "function" === typeof a.callback && a.callback.call(l);
+                f()
+            })
+        });
+        else if ("hide" === a.type || "show" === a.type) {
+            u = 300;
+            let D = {},
+                y = a.callback || null;
+            "number" === typeof a.args[0] ? (u = a.args[0], "function" === typeof a.args[1] ? y = a.args[1] : "object" === typeof a.args[1] && (D = a.args[1], y = a.args[2])) : (D = "object" ===
+                typeof a.args[0] ? a.args[0] : {}, y = "function" === typeof a.args[1] ? a.args[1] : null);
+            l[a.type](g < b ? 1 : u, D, g === C ? function() {
+                v(() => {
+                    y && y.call(l);
+                    f();
+                    !x && c && (x = !0, c())
+                })
+            } : function() {
+                v(() => {
+                    y && y.call(l);
+                    f()
+                })
+            })
+        }
+    }
+    $(this.elements[0]).removeData("isStopped");
+    l.start();
+    l.dequeue();
+    return this
+};
+$.fn.anitime = function(b, c) {
+    $.anitime.apply(this, arguments);
+    return this
+};
+$.fn.svg = function() {
+    if (this.data("svgInitialized")) return this;
+    this.data("svgInitialized", !0);
+    this.data("svgPoints", []);
+    const b = this,
+        c = parseFloat(b.css("left")) || 0,
+        d = parseFloat(b.css("top")) || 0,
+        l = this.data("svgPoints");
+    l.push({
+        x: c,
+        y: d
+    });
+    this.data("svgPoints", l);
+    this.animate = function(m, p, r, n) {
+        "function" === typeof p ? (n = p, p = 400, r = "swing") : "function" === typeof r && (n = r, r = "swing");
+        p = p || 400;
+        r = r || "swing";
+        if (void 0 !== m.left && void 0 !== m.top) {
+            const z = this.data("svgPoints");
+            z.push({
+                x: parseFloat(m.left),
+                y: parseFloat(m.top),
+                duration: p,
+                easing: r
+            });
+            this.data("svgPoints", z);
+            clearTimeout(this.data("svgTimeout"));
+            this.data("svgTimeout", setTimeout(() => {
+                createAndAnimateAlongPath(b, this.data("svgPoints"), n)
+            }, 0))
+        }
+        return this
+    };
+    return this
+};
+
+function createAndAnimateAlongPath(b, c, d) {
+    function l(B) {
+        B = Math.min((B - u) / z, 1);
+        const C = p.getPointAtLength(n * B);
+        b.css({
+            left: C.x + "px",
+            top: C.y + "px"
+        }, {
+            async: !0
+        });
+        1 > B ? requestAnimationFrame(l) : (m.remove(), b.removeData("svgInitialized"), b.removeData("svgPoints"), b.removeData("svgTimeout"), d && "function" === typeof d && d.call(b))
+    }
+    if (!(2 > c.length)) {
+        var m = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        m.setAttribute("width", "100%");
+        m.setAttribute("height", "100%");
+        m.style.position = "absolute";
+        m.style.top =
+            "0";
+        m.style.left = "0";
+        m.style.pointerEvents = "none";
+        m.style.zIndex = "-1";
+        var p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        p.setAttribute("fill", "none");
+        p.setAttribute("stroke", "#00a8ff");
+        p.setAttribute("stroke-width", "2");
+        var r = `M ${c[0].x} ${c[0].y}`;
+        for (let B = 1; B < c.length; B++) {
+            const C = c[B - 1],
+                e = c[B];
+            r += ` C ${C.x+(e.x-C.x)/3} ${C.y}, ${C.x+2*(e.x-C.x)/3} ${e.y}, ${e.x} ${e.y}`
+        }
+        p.setAttribute("d", r);
+        m.appendChild(p);
+        c.forEach(B => {
+            const C = document.createElementNS("http://www.w3.org/2000/svg",
+                "circle");
+            C.setAttribute("cx", B.x);
+            C.setAttribute("cy", B.y);
+            C.setAttribute("r", "3");
+            C.setAttribute("fill", "red");
+            m.appendChild(C)
+        });
+        document.body.appendChild(m);
+        var n = p.getTotalLength(),
+            z = c.reduce((B, C, e) => 0 < e ? B + (C.duration || 400) : B, 0),
+            u = performance.now();
+        requestAnimationFrame(l)
+    }
+}
+$.fn.aniPath = function(b, c, d) {
+    if ("string" !== typeof b) return console.error("SVG path specification must be a string"), this;
+    if (!this.length) return console.error("No elements found for the selector"), this;
+    let l = 0;
+    const m = this.length,
+        p = this;
+    this.each(function(r) {
+        r = $(this);
+        var n = r[0];
+        const z = n.closest(".example-container") || n.parentElement || document.body;
+        if (!z) return console.error("Container element not found for aniPath animation"), this;
+        const u = z.getBoundingClientRect();
+        if (!u) return console.error("Failed to get container bounding rect"),
+            this;
+        var B = window.getComputedStyle(n);
+        const C = "none" === B.display || "hidden" === B.visibility || 0 === parseFloat(B.opacity),
+            e = {
+                display: B.display,
+                visibility: B.visibility,
+                opacity: parseFloat(B.opacity)
+            };
+        "static" === B.position && (n.style.position = "absolute");
+        const x = parsePathSpecCorrectly(b);
+        let g = !1;
+        0 < x.length && !0 === x[0].options.show && (g = !0);
+        var a = !1;
+        C && "none" === B.display && (a = n.dataset.originalDisplay, a || (a = window.getComputedStyle(n).display, "none" !== a && "" !== a && (n.dataset.originalDisplay = a)), n.style.display =
+            a && "none" !== a ? a : "block", n.style.visibility = "hidden", a = !0);
+        var f = n.getBoundingClientRect();
+        B = f.width;
+        const v = f.height,
+            D = void 0 !== n.offsetLeft ? n.offsetLeft : f.left - u.left;
+        f = void 0 !== n.offsetTop ? n.offsetTop : f.top - u.top;
+        a && (n.style.display = e.display, n.style.visibility = e.visibility);
+        const y = [{
+            x: D + B / 2,
+            y: f + v / 2,
+            isHidden: C,
+            originalStyles: e,
+            show: g
+        }];
+        x.forEach(Z => {
+            let V;
+            try {
+                V = $(Z.selector, z), V.length || (V = $(Z.selector))
+            } catch (L) {
+                console.error("\uc120\ud0dd\uc790 \uc624\ub958:", L);
+                return
+            }
+            V && V.length ? V.each(function() {
+                const L =
+                    createPointFromSection(Z, this, z, u, d);
+                y.push(L)
+            }) : console.warn(`\uc120\ud0dd\uc790 ${Z.selector}\uc5d0 \ud574\ub2f9\ud558\ub294 \uc694\uc18c\ub97c \ucc3e\uc744 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4.`)
+        });
+        n = function() {
+            l++;
+            l === m && "function" === typeof c && c.call(p)
+        };
+        2 <= y.length ? (n = animateAlongPath(r, y, n, d), r[0]._aniPathInstance = n) : (console.warn("\uc560\ub2c8\uba54\uc774\uc158 \ud3ec\uc778\ud2b8\uac00 \ucda9\ubd84\ud558\uc9c0 \uc54a\uc2b5\ub2c8\ub2e4."), l++, l === m && c && c.call(p))
+    });
+    if (0 < this.length) {
+        const r = this[0]._aniPathInstance;
+        if (r) return r
+    }
+    return this
+};
+
+function calculateTargetCenter(b, c, d) {
+    const l = b.getBoundingClientRect();
+    let m;
+    b.offsetParent === c || b.offsetParent && b.offsetParent.contains(c) ? (m = b.offsetLeft, b = b.offsetTop) : (m = l.left - d.left, b = l.top - d.top, d = window.getComputedStyle(c), m -= parseFloat(d.borderLeftWidth) || 0, m -= parseFloat(d.paddingLeft) || 0, b -= parseFloat(d.borderTopWidth) || 0, b -= parseFloat(d.paddingTop) || 0);
+    return {
+        x: m + l.width / 2 + (c.scrollLeft || 0),
+        y: b + l.height / 2 + (c.scrollTop || 0)
+    }
+}
+
+function validateAndNormalizeOptions(b, c) {
+    let d = b.time || b.duration || 300;
+    if (isNaN(d) || 0 > d) console.warn(`Invalid duration value for ${c}, using default 300ms`), d = 300;
+    let l = b.delay || 0;
+    if (isNaN(l) || 0 > l) console.warn(`Invalid delay value for ${c}, using default 0ms`), l = 0;
+    b = b.easing || "swing";
+    if ("string" !== typeof b || "" === b.trim()) console.warn(`Invalid easing value for ${c}, using default 'swing'`), b = "swing";
+    return {
+        duration: d,
+        easing: b,
+        delay: l
+    }
+}
+
+function createPointFromSection(b, c, d, l, m) {
+    c = calculateTargetCenter(c, d, l);
+    d = validateAndNormalizeOptions(b.options, b.selector);
+    const p = {
+        x: c.x,
+        y: c.y,
+        duration: d.duration,
+        easing: d.easing,
+        delay: d.delay,
+        targetSelector: b.selector
+    };
+    !0 === b.options.show && (p.show = !0);
+    !0 === b.options.hide && (p.hide = !0);
+    Object.keys(b.options).forEach(r => {
+        "time duration easing delay show hide".split(" ").includes(r) || (p[r] = b.options[r])
+    });
+    return p
+}
+
+function parseTransform(b, c = !0) {
+    const d = {
+        scaleX: 1,
+        scaleY: 1,
+        rotate: 0,
+        rotateX: 0,
+        rotateY: 0,
+        skewX: 0,
+        skewY: 0
+    };
+    if (!b || "none" === b) return d;
+    var l = b;
+    c && (l = b.replace(/translate\([^)]+\)/g, "").trim());
+    b = {
+        ...d
+    };
+    if (c = l.match(/scale\(([^,]+),\s*([^)]+)\)/)) b.scaleX = parseFloat(c[1]) || 1, b.scaleY = parseFloat(c[2]) || 1;
+    else if (c = l.match(/scale\(([^)]+)\)/)) c = parseFloat(c[1]) || 1, b.scaleX = c, b.scaleY = c;
+    if (c = l.match(/rotate\(([^)]+)deg\)/)) b.rotate = parseFloat(c[1]) || 0;
+    if (c = l.match(/rotateX\(([^)]+)deg\)/)) b.rotateX = parseFloat(c[1]) ||
+        0;
+    if (c = l.match(/rotateY\(([^)]+)deg\)/)) b.rotateY = parseFloat(c[1]) || 0;
+    if (c = l.match(/skewX\(([^)]+)deg\)/)) b.skewX = parseFloat(c[1]) || 0;
+    if (l = l.match(/skewY\(([^)]+)deg\)/)) b.skewY = parseFloat(l[1]) || 0;
+    return b
+}
+
+function animateAlongPath(b, c, d, l = {}) {
+    function m(h) {
+        return h >= c.length - 1 ? 0 : (c[h + 1].duration || c[h + 1].time || 400) + (c[h + 1].delay || 0)
+    }
+
+    function p(h, F) {
+        if (!h.targetSelector) return {
+            width: 0,
+            height: 0,
+            x: h.x || 0,
+            y: h.y || 0
+        };
+        if (h.targetSelector.startsWith("#")) {
+            var H = $(h.targetSelector, f);
+            if (H.length) return h = H[0].getBoundingClientRect(), {
+                width: h.width,
+                height: h.height,
+                x: h.left - v.left + h.width / 2,
+                y: h.top - v.top + h.height / 2
+            }
+        }
+        return h.targetSelector.startsWith(".") && (Z[h.targetSelector] || (Z[h.targetSelector] = $(h.targetSelector,
+            f), V[h.targetSelector] = 0), H = Z[h.targetSelector], H.length && (0 < F && c[F - 1].targetSelector === h.targetSelector && (V[h.targetSelector]++, V[h.targetSelector] >= H.length && (V[h.targetSelector] = 0)), F = H[V[h.targetSelector]])) ? (h = F.getBoundingClientRect(), {
+            width: h.width,
+            height: h.height,
+            x: h.left - v.left + h.width / 2,
+            y: h.top - v.top + h.height / 2
+        }) : {
+            width: 0,
+            height: 0,
+            x: h.x || 0,
+            y: h.y || 0
+        }
+    }
+
+    function r(h) {
+        if (na) ia = requestAnimationFrame(r);
+        else {
+            for (h = h - za - Aa; P < c.length - 1 && h > da + m(P);) da += m(P), P++;
+            if (P >= c.length - 1 && h > da) {
+                const O = c[c.length -
+                    1];
+                h = U[c.length - 1];
+                n(a, h.x, h.y);
+                B(b, O, k);
+                if (!0 === O.hide) {
+                    const N = O.time || 300,
+                        M = performance.now(),
+                        ea = parseFloat(window.getComputedStyle(a).opacity);
+
+                    function ca(S) {
+                        let W = S = Math.min((S - M) / N, 1);
+                        const fa = O.easing || "linear";
+                        "function" === typeof $._anieasing ? W = $._anieasing(0, 1, S, fa) : $.easing && $.easing[fa] ? W = $.easing[fa](null, S, 0, 1, 1) : "swing" === fa && (W = .5 - Math.cos(S * Math.PI) / 2);
+                        a.style.opacity = ea * (1 - W);
+                        a.style.left = aa.left;
+                        a.style.top = aa.top;
+                        a.style.transform = aa.transform;
+                        1 > S ? requestAnimationFrame(ca) : (a.style.display =
+                            "none", f.contains(y) && !1 !== g.lineOut && null !== g.lineOut && Infinity !== g.lineOut && (g.lineOut ? setTimeout(() => {
+                                f.removeChild(y)
+                            }, g.lineOut) : f.removeChild(y)))
+                    }
+                    const aa = {
+                        left: a.style.left,
+                        top: a.style.top,
+                        transform: a.style.transform
+                    };
+                    requestAnimationFrame(ca)
+                } else !1 !== g.lineOut && null !== g.lineOut && Infinity !== g.lineOut && setTimeout(() => {
+                    f.contains(y) && f.removeChild(y)
+                }, g.lineOut);
+                Y = !1;
+                ba = !0;
+                ia = null;
+                d && "function" === typeof d && d.call(b)
+            } else {
+                var F = m(P),
+                    H = h - da,
+                    E = Math.min(H / F, 1);
+                h = c[P];
+                var A = c[P + 1],
+                    w = U[P],
+                    K = U[P +
+                        1];
+                A && A.delay && H < A.delay ? requestAnimationFrame(r) : (F = A && A.delay ? (H - A.delay) / (F - A.delay) : E, 0 < F && (H = A.easing || "linear", E = F, "function" === typeof $._anieasing ? E = $._anieasing(0, 1, F, H) : $.easing && $.easing[H] ? E = $.easing[H](null, F, 0, 1, 1) : "swing" === H && (E = .5 - Math.cos(F * Math.PI) / 2), n(a, w.x + (K.x - w.x) * E, w.y + (K.y - w.y) * E), g.line && (z(y, "http://www.w3.org/2000/svg", L, Q, c, h, A, P, E, qa, w, K), qa || (qa = !0)), u(b, a, h, A, E, k)), ia = requestAnimationFrame(r))
+            }
+        }
+    }
+
+    function n(h, F, H) {
+        h.style.left = `${F}px`;
+        h.style.top = `${H}px`;
+        h.style.transform =
+            "translate(-50%, -50%)"
+    }
+
+    function z(h, F, H, E, A, w, K, O, N, M, ea, ca) {
+        if (!M) {
+            let aa = "#00a8ff";
+            w = 2;
+            M = "none";
+            let S = !0;
+            if ("string" === typeof g.line && "" !== g.line.trim()) {
+                const W = g.line.trim();
+                W.includes("point:false") && (S = !1);
+                const fa = W.match(/(\d+)(?:px)?\s+(solid|dotted|dashed|double|groove|ridge|inset|outset)\s+(#[0-9a-f]{3,8}|rgba?\([^)]+\)|[a-z]+)/i);
+                if (fa) {
+                    w = parseInt(fa[1], 10) || w;
+                    switch (fa[2].toLowerCase()) {
+                        case "solid":
+                            M = "none";
+                            break;
+                        case "dotted":
+                            M = `${w},${w}`;
+                            break;
+                        case "dashed":
+                            M = `${4*w},${2*w}`;
+                            break;
+                        case "double":
+                            M = `${2*w},${w}`;
+                            break;
+                        default:
+                            M = "none"
+                    }
+                    aa = fa[3]
+                } else if (["solid", "dotted", "dashed", "dashdot"].includes(W.toLowerCase())) switch (W.toLowerCase()) {
+                    case "solid":
+                        M = "none";
+                        break;
+                    case "dotted":
+                        M = "2,2";
+                        break;
+                    case "dashed":
+                        M = "8,4";
+                        break;
+                    case "dashdot":
+                        M = "8,4,2,4"
+                } else if (W.startsWith("#") || W.startsWith("rgb") || /^[a-z]+$/i.test(W)) aa = W
+            }
+            h.appendChild(document.createElementNS(F, "g"));
+            f.appendChild(h);
+            S && A.forEach((W, fa) => {
+                var X = U[fa];
+                W = X.x;
+                X = X.y;
+                var T = document.createElementNS(F, "circle");
+                T.setAttribute("cx",
+                    W);
+                T.setAttribute("cy", X);
+                T.setAttribute("r", "3");
+                T.setAttribute("fill", aa);
+                T.setAttribute("opacity", "0");
+                h.appendChild(T);
+                H.push(T);
+                T = document.createElementNS(F, "text");
+                T.setAttribute("x", W + 5);
+                T.setAttribute("y", X - 5);
+                T.setAttribute("font-size", "10");
+                T.setAttribute("fill", "#333");
+                T.setAttribute("opacity", "0");
+                T.textContent = fa;
+                h.appendChild(T);
+                E.push(T)
+            });
+            h.dataset.showMarkers = S;
+            h.dataset.strokeColor = aa;
+            h.dataset.strokeWidth = w;
+            h.dataset.strokeDashArray = M;
+            h.dataset.strokeOpacity = .5
+        }
+        K && (K = Math.max(.01,
+            N), A = ea.x + (ca.x - ea.x) * K, ca = ea.y + (ca.y - ea.y) * K, K = h.querySelector("g"), (w = K.lastElementChild) && w.getAttribute("data-segment-index") === O.toString() ? (ea = w.getAttribute("d").split("L")[0], w.setAttribute("d", `${ea} L ${A} ${ca}`)) : (w = document.createElementNS(F, "path"), w.setAttribute("fill", "none"), w.setAttribute("stroke", h.dataset.strokeColor), w.setAttribute("stroke-width", h.dataset.strokeWidth), w.setAttribute("opacity", h.dataset.strokeOpacity), "none" !== h.dataset.strokeDashArray && w.setAttribute("stroke-dasharray",
+            h.dataset.strokeDashArray), w.setAttribute("d", `${`M ${ea.x} ${ea.y}`} ${`L ${A} ${ca}`}`), w.setAttribute("data-segment-index", O.toString()), K.appendChild(w)), "true" === h.dataset.showMarkers && 0 < H.length && 0 < E.length && (H.forEach((aa, S) => {
+            (S < O || S === O && .9 < N) && aa.setAttribute("opacity", "0.7")
+        }), E.forEach((aa, S) => {
+            (S < O || S === O && .9 < N) && aa.setAttribute("opacity", "0.7")
+        })))
+    }
+
+    function u(h, F, H, E, A, w) {
+        pa.forEach(K => {
+            if (void 0 !== E[K]) {
+                var O = void 0 !== H[K] ? H[K] : w[K],
+                    N = E[K],
+                    M = N;
+                "string" === typeof N && (N.startsWith("+=") ?
+                    M = O + parseFloat(N.substring(2)) : N.startsWith("-=") ? M = O - parseFloat(N.substring(2)) : N.startsWith("+") ? M = O + parseFloat(N.substring(1)) : N.startsWith("-") ? M = O - parseFloat(N.substring(1)) : N.endsWith("%") ? (M = parseFloat(N) / 100, M = "width" === K ? f.clientWidth * M : "height" === K ? f.clientHeight * M : O * M) : M = parseFloat(N));
+                N = O + (M - O) * A;
+                "opacity" === K ? F.style.opacity = N : "width" === K ? F.style.width = `${N}px` : "height" === K ? F.style.height = `${N}px` : "fontSize" === K ? F.style.fontSize = `${N}px` : "color" === K || "backgroundColor" === K ? "function" ===
+                    typeof $.fn.animate_interpolateColor ? (O = $.fn.animate_interpolateColor(O, M, A), F.style[K] = O) : F.style[K] = M : "borderRadius" === K ? F.style.borderRadius = `${N}px` : "scale scaleX scaleY rotate rotateX rotateY skewX skewY".split(" ").includes(K) && C(F, K, N)
+            }
+        })
+    }
+
+    function B(h, F, H) {
+        const E = h[0];
+        pa.forEach(A => {
+            if (void 0 !== F[A]) {
+                var w = F[A];
+                "string" === typeof w && (w.startsWith("+=") ? w = H[A] + parseFloat(w.substring(2)) : w.startsWith("-=") ? w = H[A] - parseFloat(w.substring(2)) : w.startsWith("+") ? w = H[A] + parseFloat(w.substring(1)) :
+                    w.startsWith("-") ? w = H[A] - parseFloat(w.substring(1)) : w.endsWith("%") ? (w = parseFloat(w) / 100, w = "width" === A ? f.clientWidth * w : "height" === A ? f.clientHeight * w : H[A] * w) : w = parseFloat(w));
+                "opacity" === A ? E.style.opacity = w : "width" === A || "height" === A || "fontSize" === A || "borderRadius" === A ? E.style[A] = `${w}px` : "color" === A || "backgroundColor" === A ? E.style[A] = w : "scale scaleX scaleY rotate rotateX rotateY skewX skewY".split(" ").includes(A) && (C(E, A, w), E.setAttribute(`data-${A}`, w))
+            }
+        })
+    }
+
+    function C(h, F, H) {
+        var E = (h.style.transform ||
+            "").replace(/translate\(-50%,\s*-50%\)/, "").trim();
+        E = parseTransform(E, !1);
+        "scale" === F ? (E.scaleX = H, E.scaleY = H) : E[F] = H;
+        h.style.transform = `translate(-50%, -50%) ${(`scale(${E.scaleX}, ${E.scaleY}) `+`rotate(${E.rotate}deg) `+`rotateX(${E.rotateX}deg) `+`rotateY(${E.rotateY}deg) `+`skewX(${E.skewX}deg) `+`skewY(${E.skewY}deg)`).trim()}`
+    }
+
+    function e(h) {
+        if (!Y || ba) return console.warn("\uc560\ub2c8\uba54\uc774\uc158\uc774 \uc2e4\ud589 \uc911\uc774 \uc544\ub2c8\ubbc0\ub85c \ud3ec\uc778\ud2b8\ub97c \ucd94\uac00\ud560 \uc218 \uc5c6\uc2b5\ub2c8\ub2e4."),
+            !1;
+        h = parsePathSpecCorrectly(h);
+        const F = f.getBoundingClientRect();
+        h.forEach(H => {
+            let E;
+            try {
+                E = $(H.selector, f), E.length || (E = $(H.selector))
+            } catch (A) {
+                console.error("\uc120\ud0dd\uc790 \uc624\ub958:", A);
+                return
+            }
+            E && E.length && E.each(function() {
+                const A = createPointFromSection(H, this, f, F, null);
+                c.push(A);
+                const w = p(A, c.length - 1);
+                U.push(w);
+                void 0 === A.x && (A.x = w.x);
+                void 0 === A.y && (A.y = w.y)
+            })
+        });
+        return !0
+    }
+
+    function x() {
+        if (!Y || ba) {
+            var h = U[U.length - 1];
+            return {
+                x: h.x,
+                y: h.y
+            }
+        }
+        var F = c[P + 1];
+        h = U[P];
+        const H = U[P + 1];
+        if (!F) return {
+            x: h.x,
+            y: h.y
+        };
+        var E = m(P),
+            A = performance.now() - za - Aa - da;
+        E = Math.min(Math.max(A / E, 0), 1);
+        F = F.easing || "linear";
+        A = E;
+        "function" === typeof $._anieasing ? A = $._anieasing(0, 1, E, F) : $.easing && $.easing[F] ? A = $.easing[F](null, E, 0, 1, 1) : "swing" === F && (A = .5 - Math.cos(E * Math.PI) / 2);
+        return {
+            x: h.x + (H.x - h.x) * A,
+            y: h.y + (H.y - h.y) * A
+        }
+    }
+    if (2 > c.length) return null;
+    const g = {
+        line: !1,
+        lineOut: 1E3,
+        ...l
+    };
+    !1 === g.line || null === g.line || "string" === typeof g.line && "" !== g.line.trim() || !0 === g.line || (console.warn("Invalid line option value, using default false"),
+        g.line = !1);
+    !1 !== g.lineOut && null !== g.lineOut && Infinity !== g.lineOut && ("number" !== typeof g.lineOut || isNaN(g.lineOut) || 0 > g.lineOut) && (console.warn("Invalid lineOut option value, using default 1000ms"), g.lineOut = 1E3);
+    const a = b[0];
+    if (!a) return console.error("Element not found for animateAlongPath"), null;
+    const f = a.closest(".example-container") || a.parentElement || document.body;
+    if (!f) return console.error("Container element not found for animateAlongPath"), null;
+    const v = f.getBoundingClientRect();
+    if (!v) return console.error("Failed to get container bounding rect for animateAlongPath"),
+        null;
+    const D = window.getComputedStyle(a);
+    "static" === D.position && (a.style.position = "absolute");
+    a.style.transformOrigin = "center center";
+    const y = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    if (!y) return console.error("Failed to create SVG element"), null;
+    y.setAttribute("width", "100%");
+    y.setAttribute("height", "100%");
+    y.style.position = "absolute";
+    y.style.top = "0";
+    y.style.left = "0";
+    y.style.pointerEvents = "none";
+    y.style.zIndex = "1000";
+    const Z = {},
+        V = {};
+    let L = [],
+        Q = [];
+    l = c[0];
+    if (l.isHidden && !0 === l.show) {
+        if ("none" ===
+            l.originalStyles.display) {
+            let h = a.dataset.originalDisplay;
+            h || (h = window.getComputedStyle(a).display, "none" !== h && "" !== h && (a.dataset.originalDisplay = h));
+            a.style.display = h && "none" !== h ? h : "block"
+        }
+        "hidden" === l.originalStyles.visibility && (a.style.visibility = "visible");
+        a.style.opacity = "0";
+        1 < c.length && (c[1].opacity = 1)
+    }
+    const k = {},
+        pa = "width height opacity scale scaleX scaleY rotate rotateX rotateY skewX skewY fontSize color backgroundColor borderRadius".split(" "),
+        R = parseTransform(D.transform || a.style.transform ||
+            "", !0);
+    pa.forEach(h => {
+        "opacity" === h ? k[h] = parseFloat(D[h]) : "width" === h || "height" === h ? k[h] = a.getBoundingClientRect()[h] : "scale" === h ? k[h] = R.scaleX : "scaleX" === h ? k[h] = R.scaleX : "scaleY" === h ? k[h] = R.scaleY : ["rotate", "rotateX", "rotateY", "skewX", "skewY"].includes(h) ? k[h] = R[h] : k[h] = parseFloat(D[h]) || 0
+    });
+    let P = 0,
+        da = 0,
+        qa = !1,
+        za = performance.now(),
+        na = !1,
+        wa = 0,
+        Aa = 0,
+        Y = !0,
+        ia = null,
+        ba = !1;
+    const U = [];
+    c.forEach((h, F) => {
+        const H = p(h, F);
+        U[F] = H;
+        void 0 === h.x && (h.x = H.x);
+        void 0 === h.y && (h.y = H.y)
+    });
+    const Fa = {
+        addPoint: function(h) {
+            return e(h)
+        },
+        getCurrentPosition: function() {
+            return x()
+        },
+        isRunning: function() {
+            return Y && !ba
+        },
+        pause: function() {
+            na || !Y || ba || (na = !0, wa = performance.now());
+            return Fa
+        },
+        resume: function() {
+            na && Y && !ba && (0 < wa && (Aa += performance.now() - wa, wa = 0), na = !1);
+            return Fa
+        },
+        stop: function() {
+            null !== ia && (cancelAnimationFrame(ia), ia = null);
+            Y = !1;
+            ba = !0;
+            na = !1;
+            return Fa
+        },
+        element: b,
+        getCurrentPointIndex: function() {
+            return P
+        },
+        getTotalPoints: function() {
+            return c.length
+        }
+    };
+    ia = requestAnimationFrame(r);
+    return Fa
+}
+
+function parsePathSpecCorrectly(b) {
+    const c = [];
+    let d = 0;
+    for (; d < b.length;)
+        if ("#" === b[d] || "." === b[d]) {
+            for (var l = d; d < b.length && " " !== b[d] && "{" !== b[d];) d++;
+            l = b.substring(l, d).trim();
+            const m = {};
+            if ("{" === b[d] || " " === b[d] && -1 !== b.indexOf("{", d)) {
+                for (;
+                    " " === b[d];) d++;
+                if ("{" === b[d]) {
+                    const p = d + 1;
+                    let r = 1;
+                    for (d++; d < b.length && 0 < r;) "{" === b[d] && r++, "}" === b[d] && r--, d++;
+                    b.substring(p, d - 1).trim().split(",").forEach(n => {
+                        const z = n.indexOf(":");
+                        if (-1 !== z) {
+                            const u = n.substring(0, z).trim();
+                            n = n.substring(z + 1).trim();
+                            if (n.startsWith('"') &&
+                                n.endsWith('"') || n.startsWith("'") && n.endsWith("'")) n = n.substring(1, n.length - 1);
+                            "show" === u || "hide" === u ? "true" === n.toLowerCase() ? m[u] = !0 : (n.toLowerCase(), m[u] = !1) : !isNaN(parseFloat(n)) && isFinite(n) ? m[u] = parseFloat(n) : m[u] = n
+                        }
+                    })
+                }
+            }
+            c.push({
+                selector: l,
+                options: m
+            })
+        } else "-" === b[d] && ">" === b[d + 1] ? d += 2 : d++;
+    return c
+};
